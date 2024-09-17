@@ -16,6 +16,7 @@
 #include <conio.h>
 #include <map>
 #include <queue>
+#include <string>
 #include "..\\MD5.h"
 #include "hookClose.h"
 using std::atomic;
@@ -167,6 +168,12 @@ void healthyCheck(SOCKET HealthyBeat)
         }
         char buf[8192] = {0};
         int state = recv(HealthyBeat, buf, sizeof(buf), 0);
+        if (closeP)
+        {
+            send(HealthyBeat, "\r\nClose\r\n", strlen("\r\nClose\r\n"), 0);
+            closesocket(HealthyBeat);
+            return;
+        }
         int state1 = send(HealthyBeat, buf, strlen(buf), 0);
         if (state == SOCKET_ERROR || state1 == SOCKET_ERROR)
         {
@@ -414,6 +421,15 @@ void show()
         Sleep(500);
     }
 }
+void cmd()
+{
+    string cmds;
+    while (1)
+    {
+        system("cls");
+        getline(cin, cmds);
+    }
+}
 void pageShow()
 {
     while (ServerState && !closeP)
@@ -426,6 +442,7 @@ void pageShow()
              << "5.exit" << endl
              << "Choose:";
         cin >> choose;
+        system("cls");
         switch (choose)
         {
         case 1:
@@ -437,9 +454,9 @@ void pageShow()
         case 3:
             show();
             break;
-        // case 4:
-        //     cmd();
-        //     break;
+        case 4:
+            cmd();
+            break;
         case 5:
             ServerState = false;
             break;
@@ -448,14 +465,18 @@ void pageShow()
     }
     closesocket(sockC);
 }
+thread healthyCheckThread;
+thread pageShowThread;
 void WhenClose()
 {
     closeP = true;
+    healthyCheckThread.detach();
+    pageShowThread.detach();
     return;
 }
 int main()
 {
-    closeCheak.setRunFun(WhenClose, WhenClose, WhenClose, WhenClose, WhenClose);
+    closeCheak.setRunFun((void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose);
     closeCheak.startHook();
     system("chcp 65001>nul");
     do
@@ -478,8 +499,8 @@ int main()
         return -4096;
     }
     send(healthyBeat, SEID.c_str(), strlen(SEID.c_str()), 0);
-    thread healthyCheckThread = thread(healthyCheck, healthyBeat);
-    thread pageShowThread = thread(pageShow);
+    healthyCheckThread = thread(healthyCheck, healthyBeat);
+    pageShowThread = thread(pageShow);
     while (1)
     {
         if (closeP)

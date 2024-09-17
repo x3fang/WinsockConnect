@@ -40,6 +40,8 @@ typedef struct SEIDForSocketStruct
     bool isSEIDExit;
     bool isBack;
     bool isUse;
+    string SEID;
+    SOCKET ServerSocket;
 
     SEIDForSocketStruct()
     {
@@ -361,7 +363,7 @@ string StringTime(time_t t1)
 }
 void HealthyCheckByServer(string SEID)
 {
-    int timeout = 10000; // 设置超时时间为 10 秒
+    int timeout = 1000; // 设置超时时间为 10 秒
     setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_RCVTIMEO, (char *)timeout, sizeof(timeout));
     setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_SNDTIMEO, (char *)timeout, sizeof(timeout));
     while (1)
@@ -371,6 +373,13 @@ void HealthyCheckByServer(string SEID)
         char buf[128] = {0};
         int state = send(ServerSEIDMap[SEID].socketH, sendMsg.c_str(), sendMsg.length(), 0);
         int state1 = recv(ServerSEIDMap[SEID].socketH, buf, sizeof(buf), 0);
+        if (strcmp(buf, "\r\nClose\r\n") == 0)
+        {
+            ServerSEIDMap[SEID].isBack = true;
+            ServerSEIDMap[SEID].isSocketExit = false;
+            closesocket(ServerSEIDMap[SEID].socketH);
+            return;
+        }
         if (strcmp(buf, sendMsg.c_str()) != 0 || ServerSEIDMap[SEID].isBack || state <= 0 || state1 <= 0)
         {
             ServerSEIDMap[SEID].isBack = true;
@@ -403,13 +412,16 @@ void HealthyCheckByClient(string SEID)
         }
     }
 }
-int showForSend(SOCKET s, filter f, bool startIf = false, ClientSocketFlagStruct::states state = ClientSocketFlagStruct::NULLs)
+int showForSend(string seid, filter f, bool startIf = false, ClientSocketFlagStruct::states state = ClientSocketFlagStruct::NULLs)
 {
+    SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     int canShowClient = 0;
     while (ClientMapLock.exchange(true, std::memory_order_acquire))
         ; // 加锁
     for (int i = 1; i <= ClientMap.size(); i++)
     {
+        if (ServerSEIDMap[seid].isBack)
+            return -1;
         if (!startIf || ClientMap[i - 1].state == state || f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)))
         {
             canShowClient++;
@@ -422,23 +434,26 @@ int showForSend(SOCKET s, filter f, bool startIf = false, ClientSocketFlagStruct
     send(s, "\r\n\r\nend\r\n\r\n", strlen("\r\n\r\nend\r\n\r\n"), 0);
     return canShowClient;
 }
-void Connect(SOCKET s, vector<string> cmods, int cmodsNum)
+void Connect(string seid, vector<string> cmods, int cmodsNum)
 {
+    SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     char recvBuf[1024] = {0};
     while (1)
     {
+        if (ServerSEIDMap[seid].isBack)
+            break;
         filter temp;
         showForSend(s, temp, true, ClientSocketFlagStruct::Online);
         int state = recv(s, recvBuf, sizeof(recvBuf), 0);
         if (state == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
         {
-            return;
+            break;
         }
         else if (state > 0)
         {
             if (strcmp(recvBuf, "\r\nexit\r\n") == 0)
             {
-                return;
+                break;
             }
             else if (strcmp(recvBuf, "\r\nnext\r\n"))
             {
@@ -516,23 +531,26 @@ int delForId(int ClientId)
     }
     return -1;
 }
-void del(SOCKET s, vector<string> cmods, int cmodsNum)
+void del(string seid, vector<string> cmods, int cmodsNum)
 {
+    SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     char recvBuf[1024] = {0};
     while (1)
     {
+        if (ServerSEIDMap[seid].isBack)
+            break;
         filter temp;
-        showForSend(s, temp);
+        showForSend(seid, temp);
         int state = recv(s, recvBuf, sizeof(recvBuf), 0);
         if (state == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
         {
-            return;
+            break;
         }
         else if (state > 0)
         {
             if (strcmp(recvBuf, "\r\nexit\r\n") == 0)
             {
-                return;
+                break;
             }
             else if (strcmp(recvBuf, "\r\nnext\r\n") == 0)
             {
@@ -555,14 +573,17 @@ void del(SOCKET s, vector<string> cmods, int cmodsNum)
         }
     }
 }
-void show(SOCKET s, vector<string> cmods, int cmodsNum)
+void show(string seid, vector<string> cmods, int cmodsNum)
 {
+    SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     cout << "SHOW";
     char recvBuf[1024] = {0};
     while (1)
     {
         filter temp;
-        showForSend(s, temp);
+        if (ServerSEIDMap[seid].isBack)
+            break;
+        showForSend(seid, temp);
         int state = recv(s, recvBuf, sizeof(recvBuf), 0);
         if (state == SOCKET_ERROR)
         {
@@ -574,10 +595,10 @@ void show(SOCKET s, vector<string> cmods, int cmodsNum)
         }
     }
 }
-void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
+void cmod(string seid, vector<string> cmods, int cmodsNum)
 {
     //[del,cmd,show][all,]
-
+    SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     map<string, int> StringToIntInComd = {
         {"run", 1},
         {"show", 2},
@@ -591,9 +612,13 @@ void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
     filter f;
     if (strcmp(cmods[1].c_str(), "del") == 0 && cmodsNum >= 3)
     {
+        if (ServerSEIDMap[seid].isBack)
+            return;
         send(s, "\r\ndel\r\n", strlen("\r\ndel\r\n"), 0);
         for (int i = 2; i <= cmodsNum; i += 3)
         {
+            if (ServerSEIDMap[seid].isBack)
+                return;
             switch (StringToIntInComd[cmods[i]])
             {
             case 5:
@@ -625,31 +650,37 @@ void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
                 }
                 break;
             }
-            int sectClient = 0;
-            for (int i = 1; i <= ClientMap.size(); i++)
-            {
-                if (f.matching(ClientMap[i - 1].ClientWanIp,
-                               ClientMap[i - 1].ClientLanIp,
-                               to_string(ClientMap[i - 1].ClientConnectPort)) &&
-                    ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
-                {
-                    sectClient++;
-                    delForId(i);
-                }
-            }
-            send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
-            send(s, to_string(sectClient).c_str(), to_string(sectClient).length(), 0);
-            send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
         }
+        int sectClient = 0;
+        for (int i = 1; i <= ClientMap.size(); i++)
+        {
+            if (f.matching(ClientMap[i - 1].ClientWanIp,
+                           ClientMap[i - 1].ClientLanIp,
+                           to_string(ClientMap[i - 1].ClientConnectPort)) &&
+                ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
+            {
+                sectClient++;
+                delForId(i);
+            }
+        }
+        if (ServerSEIDMap[seid].isBack)
+            return;
+        send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
+        send(s, to_string(sectClient).c_str(), to_string(sectClient).length(), 0);
+        send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
     }
     else if (strcmp(cmods[1].c_str(), "cmd") == 0 && cmodsNum >= 4)
     {
+        if (ServerSEIDMap[seid].isBack)
+            return;
         send(s, "\r\ncmd\r\n", strlen("\r\ncmd\r\n"), 0);
         int cmdstart = 0;
         // 一条指令
         // cmd [port [!=,==,>,<,>=,<=] [port]] [wanip [!=,==] [ip]] [lanip [!=,==] [ip]] [all] "指令"
         for (int i = 2; i <= cmodsNum && cmods[i][0] != '"'; i += 3, cmdstart = i)
         {
+            if (ServerSEIDMap[seid].isBack)
+                return;
             if (cmods[i][0] == '"')
             {
                 break;
@@ -687,6 +718,8 @@ void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
         }
         if (cmdstart > cmodsNum) // 判断指令格式是否标准
         {
+            if (ServerSEIDMap[seid].isBack)
+                return;
             send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
             return;
         }
@@ -710,12 +743,16 @@ void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
                 send(ClientMap[i - 1].ClientSocket, sendBuf.c_str(), sendBuf.length(), 0); // 发送指令至Client
             }
         }
+        if (ServerSEIDMap[seid].isBack)
+            return;
         send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
         send(s, to_string(sectClient).c_str(), to_string(sectClient).length(), 0);
         send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
     }
     else if (strcmp(cmods[1].c_str(), "show") == 0 && cmodsNum >= 3)
     {
+        if (ServerSEIDMap[seid].isBack)
+            return;
         send(s, "\r\nshow\r\n", strlen("\r\nshow\r\n"), 0);
         for (int i = 2; i <= cmodsNum; i += 3)
         {
@@ -754,7 +791,9 @@ void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
                 return;
             }
         }
-        int showClient = showForSend(s, f);
+        int showClient = showForSend(seid, f);
+        if (ServerSEIDMap[seid].isBack)
+            return;
         send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
         send(s, to_string(showClient).c_str(), to_string(showClient).length(), 0);
         send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
@@ -888,6 +927,8 @@ void ServerRS(SOCKET s)
     string SEID = createSEID(s, lastloginYZM + loginYZM);
     send_message(s, SEID.c_str());
     ServerSEIDMap[SEID].isSEIDExit = true;
+    ServerSEIDMap[SEID].SEID = SEID;
+    ServerSEIDMap[SEID].ServerSocket = s;
     while (!ServerSEIDMap[(string)SEID].isSocketExit)
         ;
     thread HealthyCheckThread = thread(HealthyCheckByServer, SEID);
