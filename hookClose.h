@@ -1,5 +1,4 @@
 #include <windows.h>
-using namespace std;
 class CloseCheak
 {
 public:

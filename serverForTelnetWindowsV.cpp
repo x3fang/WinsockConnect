@@ -17,6 +17,7 @@
 #include <map>
 #include <queue>
 #include "..\\MD5.h"
+#include "getCmd.h"
 using std::atomic;
 using std::cin;
 using std::cout;
@@ -282,7 +283,7 @@ int initServer(SOCKET &, sockaddr_in &, int);
 string StringTime(time_t);
 void HealthyCheckByServer(string);
 void HealthyCheckByClient(string);
-void showForSend(SOCKET, filter, bool, ClientSocketFlagStruct::states);
+int showForSend(SOCKET, filter, bool, ClientSocketFlagStruct::states);
 void Connect(SOCKET, vector<string>, int);
 int delForId(int);
 void del(SOCKET, vector<string>, int);
@@ -402,22 +403,24 @@ void HealthyCheckByClient(string SEID)
         }
     }
 }
-void showForSend(SOCKET s, filter f, bool startIf = false, ClientSocketFlagStruct::states state = ClientSocketFlagStruct::NULLs)
+int showForSend(SOCKET s, filter f, bool startIf = false, ClientSocketFlagStruct::states state = ClientSocketFlagStruct::NULLs)
 {
+    int canShowClient = 0;
     while (ClientMapLock.exchange(true, std::memory_order_acquire))
         ; // 加锁
     for (int i = 1; i <= ClientMap.size(); i++)
     {
         if (!startIf || ClientMap[i - 1].state == state || f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)))
         {
+            canShowClient++;
             string sendBuf = ClientMap[i - 1].ClientWanIp + " " + ClientMap[i - 1].ClientLanIp + " " + to_string(ClientMap[i - 1].ClientConnectPort) + " " + to_string(ClientMap[i - 1].state);
             send(s, sendBuf.c_str(), sendBuf.length(), 0);
         }
     }
     ClientMapLock.exchange(false, std::memory_order_release); // 解锁
 
-    cout << send(s, "\r\n\r\nend\r\n\r\n", strlen("\r\n\r\nend\r\n\r\n"), 0);
-    return;
+    send(s, "\r\n\r\nend\r\n\r\n", strlen("\r\n\r\nend\r\n\r\n"), 0);
+    return canShowClient;
 }
 void Connect(SOCKET s, vector<string> cmods, int cmodsNum)
 {
@@ -573,6 +576,8 @@ void show(SOCKET s, vector<string> cmods, int cmodsNum)
 }
 void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
 {
+    //[del,cmd,show][all,]
+
     map<string, int> StringToIntInComd = {
         {"run", 1},
         {"show", 2},
@@ -584,104 +589,95 @@ void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
         {"lanip", 7},
         {"all", 8}};
     filter f;
-    if (strcmp(cmods[1].c_str(), "del") == 0)
+    if (strcmp(cmods[1].c_str(), "del") == 0 && cmodsNum >= 3)
     {
-        if (strcmp(cmods[2].c_str(), "all") == 0)
+        send(s, "\r\ndel\r\n", strlen("\r\ndel\r\n"), 0);
+        for (int i = 2; i <= cmodsNum; i += 3)
         {
-            int sectClient = 0;
-            for (int i = 1; i <= ClientMap.size(); i++)
-            {
-                if (ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
-                {
-                    sectClient++;
-                    delForId(i);
-                }
-            }
-            send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
-            send(s, to_string(sectClient).c_str(), to_string(sectClient).length(), 0);
-            send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
-        }
-        else if ((cmods.size() - 3) % 3 == 0 && cmods.size() > 3)
-        {
-            for (int i = 4; i <= cmodsNum; i += 3)
-            {
-                switch (StringToIntInComd[cmods[i - 1]])
-                {
-                case 5:
-                    if (!f.addRule(filter::ruleDataType::port, cmods[i], cmods[i + 1]))
-                    {
-                        send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
-                        return;
-                    }
-                    break;
-                case 6:
-                    if (!f.addRule(filter::ruleDataType::wanip, cmods[i], cmods[i + 1]))
-                    {
-                        send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
-                        return;
-                    }
-                    break;
-                case 7:
-                    if (!f.addRule(filter::ruleDataType::lanip, cmods[i], cmods[i + 1]))
-                    {
-                        send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
-                        return;
-                    }
-                    break;
-                case 8:
-                    if (!f.addRule(filter::ruleDataType::all, cmods[i], cmods[i + 1]))
-                    {
-                        send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
-                        return;
-                    }
-                    break;
-                }
-            }
-            int sectClient = 0;
-            for (int i = 1; i <= ClientMap.size(); i++)
-            {
-                if (f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)) && ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
-                {
-                    sectClient++;
-                    delForId(i);
-                }
-            }
-            send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
-            send(s, to_string(sectClient).c_str(), to_string(sectClient).length(), 0);
-            send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
-        }
-        else
-        {
-            send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
-        }
-    }
-    else if (strcmp(cmods[1].c_str(), "cmd") == 0 && cmodsNum >= 4)
-    {
-        int cmdstart = 0;
-        for (int i = 2; i <= cmodsNum && strcmp(cmods[i].c_str(), "\r\ncmd\r\n") != 0; i += 1)
-        {
-            if (strcmp(cmods[i - 1].c_str(), "\r\ncmd\r\n") == 0)
-            {
-                break;
-            }
-            switch (StringToIntInComd[cmods[i - 1]])
+            switch (StringToIntInComd[cmods[i]])
             {
             case 5:
-                if (!f.addRule(filter::ruleDataType::port, cmods[i], cmods[i + 1]))
+                if (!f.addRule(filter::ruleDataType::port, cmods[i + 1], cmods[i + 2]))
                 {
                     send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
                     return;
                 }
                 break;
             case 6:
-                if (!f.addRule(filter::ruleDataType::wanip, cmods[i], cmods[i + 1]))
+                if (!f.addRule(filter::ruleDataType::wanip, cmods[i + 1], cmods[i + 2]))
                 {
                     send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
                     return;
                 }
                 break;
             case 7:
-                if (!f.addRule(filter::ruleDataType::lanip, cmods[i], cmods[i + 1]))
+                if (!f.addRule(filter::ruleDataType::lanip, cmods[i + 1], cmods[i + 2]))
+                {
+                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    return;
+                }
+                break;
+            case 8:
+                if (!f.addRule(filter::ruleDataType::all, cmods[i + 1], cmods[i + 2]))
+                {
+                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    return;
+                }
+                break;
+            }
+            int sectClient = 0;
+            for (int i = 1; i <= ClientMap.size(); i++)
+            {
+                if (f.matching(ClientMap[i - 1].ClientWanIp,
+                               ClientMap[i - 1].ClientLanIp,
+                               to_string(ClientMap[i - 1].ClientConnectPort)) &&
+                    ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
+                {
+                    sectClient++;
+                    delForId(i);
+                }
+            }
+            send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
+            send(s, to_string(sectClient).c_str(), to_string(sectClient).length(), 0);
+            send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
+        }
+    }
+    else if (strcmp(cmods[1].c_str(), "cmd") == 0 && cmodsNum >= 4)
+    {
+        send(s, "\r\ncmd\r\n", strlen("\r\ncmd\r\n"), 0);
+        int cmdstart = 0;
+        // 一条指令
+        // cmd [port [!=,==,>,<,>=,<=] [port]] [wanip [!=,==] [ip]] [lanip [!=,==] [ip]] [all] "指令"
+        for (int i = 2; i <= cmodsNum && cmods[i][0] != '"'; i += 3, cmdstart = i)
+        {
+            if (cmods[i][0] == '"')
+            {
+                break;
+            }
+            switch (StringToIntInComd[cmods[i]])
+            {
+            case 5:
+                if (!f.addRule(filter::ruleDataType::port, cmods[i + 1], cmods[i + 2]))
+                {
+                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    return;
+                }
+                break;
+            case 6:
+                if (!f.addRule(filter::ruleDataType::wanip, cmods[i + 1], cmods[i + 2]))
+                {
+                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    return;
+                }
+                break;
+            case 7:
+                if (!f.addRule(filter::ruleDataType::lanip, cmods[i + 1], cmods[i + 2]))
+                {
+                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    return;
+                }
+            case 8:
+                if (!f.addRule(filter::ruleDataType::all, cmods[i + 1], cmods[i + 2]))
                 {
                     send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
                     return;
@@ -689,21 +685,25 @@ void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
                 break;
             }
         }
-        if (cmdstart - 1 > cmodsNum)
+        if (cmdstart > cmodsNum) // 判断指令格式是否标准
         {
             send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
             return;
         }
         string sendBuf;
         int sectClient = 0;
+        // 合并指令
+        /*
+        之前的存储模式：按空格分割
+        */
         for (int i = cmdstart; i <= cmodsNum; i++)
         {
-            sendBuf += cmods[i - 1] + " ";
+            sendBuf += cmods[i] + " ";
         }
+        sendBuf = sendBuf.substr(1, sendBuf.length() - 2); // 去掉头尾的 ' " '
         sendBuf += "\r\nexit\r\n";
         for (int i = 1; i <= ClientMap.size(); i++)
         {
-
             if (f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)) && ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
             {
                 sectClient++;
@@ -714,37 +714,50 @@ void cmod(SOCKET s, vector<string> cmods, int cmodsNum)
         send(s, to_string(sectClient).c_str(), to_string(sectClient).length(), 0);
         send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
     }
-    else if (strcmp(cmods[2].c_str(), "show") == 0 && cmodsNum >= 2)
+    else if (strcmp(cmods[1].c_str(), "show") == 0 && cmodsNum >= 3)
     {
-        for (int i = 4; i <= cmodsNum; i += 3)
+        send(s, "\r\nshow\r\n", strlen("\r\nshow\r\n"), 0);
+        for (int i = 2; i <= cmodsNum; i += 3)
         {
-            switch (StringToIntInComd[cmods[i - 1]])
+            switch (StringToIntInComd[cmods[i]])
             {
             case 5:
-                if (!f.addRule(filter::ruleDataType::port, cmods[i], cmods[i + 1]))
+                if (!f.addRule(filter::ruleDataType::port, cmods[i + 1], cmods[i + 2]))
                 {
                     send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
                     return;
                 }
                 break;
             case 6:
-                if (!f.addRule(filter::ruleDataType::wanip, cmods[i], cmods[i + 1]))
+                if (!f.addRule(filter::ruleDataType::wanip, cmods[i + 1], cmods[i + 2]))
                 {
                     send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
                     return;
                 }
                 break;
             case 7:
-                if (!f.addRule(filter::ruleDataType::lanip, cmods[i], cmods[i + 1]))
+                if (!f.addRule(filter::ruleDataType::lanip, cmods[i + 1], cmods[i + 2]))
                 {
                     send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
                     return;
                 }
                 break;
+            case 8:
+                if (!f.addRule(filter::ruleDataType::all, cmods[i + 1], cmods[i + 2]))
+                {
+                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    return;
+                }
+                break;
+            default:
+                send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                return;
             }
         }
-        showForSend(s, f);
-        send(s, "\r\nok\r\n0", strlen("\r\nok\r\n0"), 0);
+        int showClient = showForSend(s, f);
+        send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
+        send(s, to_string(showClient).c_str(), to_string(showClient).length(), 0);
+        send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
     }
 }
 string createSEID(SOCKET sock, string something = NULL)

@@ -1,6 +1,6 @@
 #include <string>
-using namespace std;
-string filePath(string inc, char jd, int n)
+// using namespace std;
+std::string filePath(std::string inc, char jd, int n)
 {
 
     // for(int i = 0; i < inc.length(); i++)

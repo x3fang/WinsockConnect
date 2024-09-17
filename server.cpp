@@ -17,6 +17,7 @@
 #include <map>
 #include <queue>
 #include "..\\MD5.h"
+#include "hookClose.h"
 using std::atomic;
 using std::cin;
 using std::cout;
@@ -33,6 +34,8 @@ using std::thread;
 using std::to_string;
 using std::vector;
 
+CloseCheak closeCheak;
+bool closeP = false;
 string serverIp;
 int serverPort;
 string password;
@@ -156,6 +159,12 @@ void healthyCheck(SOCKET HealthyBeat)
     setsockopt(HealthyBeat, SOL_SOCKET, SO_SNDTIMEO, (char *)timeout, sizeof(timeout));
     while (1)
     {
+        if (closeP)
+        {
+            send(HealthyBeat, "\r\nClose\r\n", strlen("\r\nClose\r\n"), 0);
+            closesocket(HealthyBeat);
+            return;
+        }
         char buf[8192] = {0};
         int state = recv(HealthyBeat, buf, sizeof(buf), 0);
         int state1 = send(HealthyBeat, buf, strlen(buf), 0);
@@ -407,7 +416,7 @@ void show()
 }
 void pageShow()
 {
-    while (ServerState)
+    while (ServerState && !closeP)
     {
         int choose;
         cout << "1.Connect" << endl
@@ -437,10 +446,17 @@ void pageShow()
         }
         system("cls");
     }
+    closesocket(sockC);
 }
-
+void WhenClose()
+{
+    closeP = true;
+    return;
+}
 int main()
 {
+    closeCheak.setRunFun(WhenClose, WhenClose, WhenClose, WhenClose, WhenClose);
+    closeCheak.startHook();
     system("chcp 65001>nul");
     do
     {
@@ -466,6 +482,12 @@ int main()
     thread pageShowThread = thread(pageShow);
     while (1)
     {
+        if (closeP)
+        {
+            healthyCheckThread.detach();
+            pageShowThread.detach();
+            return 0;
+        }
         while (ServerHealthCheck.exchange(true, std::memory_order_acquire))
             ;
         if (ServerState == false)
