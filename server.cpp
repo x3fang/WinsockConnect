@@ -170,19 +170,19 @@ void healthyCheck(SOCKET HealthyBeat)
     {
         if (closeP)
         {
-            send(HealthyBeat, "\r\nClose\r\n", strlen("\r\nClose\r\n"), 0);
+            send_message(HealthyBeat, "\r\nClose\r\n");
             closesocket(HealthyBeat);
             return;
         }
-        char buf[8192] = {0};
-        int state = recv(HealthyBeat, buf, sizeof(buf), 0);
+        string buf;
+        int state = receive_message(HealthyBeat, buf);
         if (closeP)
         {
-            send(HealthyBeat, "\r\nClose\r\n", strlen("\r\nClose\r\n"), 0);
+            send_message(HealthyBeat, "\r\nClose\r\n");
             closesocket(HealthyBeat);
             return;
         }
-        int state1 = send(HealthyBeat, buf, strlen(buf), 0);
+        int state1 = send_message(HealthyBeat, buf);
         if (state == SOCKET_ERROR || state1 == SOCKET_ERROR)
         {
             while (ServerHealthCheck.exchange(true, std::memory_order_acquire))
@@ -250,8 +250,8 @@ int login(SOCKET s)
 }
 void Connect()
 {
-    send(sockC, "connect", strlen("connect"), 0);
-    char recvBuf[8192] = {0};
+    send_message(sockC, "connect");
+    string recvBuf;
     string srecv, cmds;
     int kb_cin = -1;
     int clientNum = 0;
@@ -262,13 +262,15 @@ void Connect()
         cout << "__________Clients List__________" << endl;
         do
         {
-            recv(sockC, recvBuf, 2048, 0);
-            if (strcmp(recvBuf, "\r\n\r\nend\r\n\r\n") == 0)
+            string recvBuf;
+            receive_message(sockC, recvBuf);
+            if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
             {
+
                 break;
             }
             clientNum++;
-            srecv = recvBuf;
+            string srecv = recvBuf;
             srecv = srecv.substr(srecv.length() - 3);
             cout << clientNum << " " << srecv << endl;
         } while (1);
@@ -284,14 +286,14 @@ void Connect()
             cin.ignore();
             if (kb_cin == 0)
             {
-                send(sockC, "\r\nexit\r\n", strlen("\r\nexit\r\n"), 0);
+                send_message(sockC, "\r\nexit\r\n");
                 break;
             }
             if (kb_cin > 0 && kb_cin <= clientNum)
             {
-                send(sockC, to_string(kb_cin).c_str(), strlen(to_string(kb_cin).c_str()), 0);
-                recv(sockC, recvBuf, sizeof(recvBuf), 0);
-                if (strcmp(recvBuf, "\r\n\r\nsec\r\n\r\n") == 0)
+                send_message(sockC, to_string(kb_cin));
+                receive_message(sockC, recvBuf);
+                if (strcmp(recvBuf.c_str(), "\r\n\r\nsec\r\n\r\n") == 0)
                 {
                     int qt = 1;
                     while (1)
@@ -306,11 +308,11 @@ void Connect()
                             qt--;
                             if (qt == 0)
                             {
-                                send(sockC, "\r\nfexit\r\n", strlen("\r\nfexit\r\n"), 0);
+                                send_message(sockC, "\r\nfexit\r\n");
                                 break;
                             }
                         }
-                        send(sockC, cmds.c_str(), strlen(cmds.c_str()), 0);
+                        send_message(sockC, cmds.c_str());
                     }
                 }
                 else
@@ -322,15 +324,15 @@ void Connect()
         }
         else
         {
-            send(sockC, "\r\nnext\r\n", strlen("\r\nnext\r\n"), 0);
+            send_message(sockC, "\r\nnext\r\n");
         }
         Sleep(500);
     }
 }
 void del()
 {
-    send(sockC, "del", strlen("del"), 0);
-    char recvBuf[8192] = {0};
+    send_message(sockC, "del");
+    string recvBuf;
     string srecv, cmds;
     int kb_cin = -1;
     int clientNum = 0;
@@ -341,13 +343,15 @@ void del()
         cout << "__________Clients List__________" << endl;
         do
         {
-            recv(sockC, recvBuf, 2048, 0);
-            if (strcmp(recvBuf, "\r\n\r\nend\r\n\r\n") == 0)
+            string recvBuf;
+            receive_message(sockC, recvBuf);
+            if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
             {
+
                 break;
             }
             clientNum++;
-            srecv = recvBuf;
+            string srecv = recvBuf;
             srecv = srecv.substr(srecv.length() - 3);
             cout << clientNum << " " << srecv << endl;
         } while (1);
@@ -363,19 +367,19 @@ void del()
             cin.ignore();
             if (kb_cin == 0)
             {
-                send(sockC, "\r\nexit\r\n", strlen("\r\nexit\r\n"), 0);
+                send_message(sockC, "\r\nexit\r\n");
                 break;
             }
             if (kb_cin > 0 && kb_cin <= clientNum)
             {
-                send(sockC, to_string(kb_cin).c_str(), strlen(to_string(kb_cin).c_str()), 0);
-                recv(sockC, recvBuf, sizeof(recvBuf), 0);
-                if (strcmp(recvBuf, "\r\n\r\nUse\r\n\r\n") == 0)
+                send_message(sockC, to_string(kb_cin));
+                receive_message(sockC, recvBuf);
+                if (strcmp(recvBuf.c_str(), "\r\n\r\nUse\r\n\r\n") == 0)
                 {
                     cout << "It was Use" << endl;
                     system("pause");
                 }
-                else if (strcmp(recvBuf, "\r\n\r\nUnError\r\n\r\n") == 0)
+                else if (strcmp(recvBuf.c_str(), "\r\n\r\nUnError\r\n\r\n") == 0)
                 {
                     cout << "UnError" << endl;
                     system("pause");
@@ -384,14 +388,14 @@ void del()
         }
         else
         {
-            send(sockC, "\r\nnext\r\n", strlen("\r\nnext\r\n"), 0);
+            send_message(sockC, "\r\nnext\r\n");
         }
         Sleep(500);
     }
 }
 void show()
 {
-    send(sockC, "show", strlen("show"), 0);
+    send_message(sockC, "show");
     char recvBuf[8192] = {0};
     string srecv, cmds;
     int kb_cin = -1;
@@ -403,13 +407,15 @@ void show()
         cout << "__________Clients List__________" << endl;
         do
         {
-            recv(sockC, recvBuf, 2048, 0);
-            if (strcmp(recvBuf, "\r\n\r\nend\r\n\r\n") == 0)
+            string recvBuf;
+            receive_message(sockC, recvBuf);
+            if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
             {
+
                 break;
             }
             clientNum++;
-            srecv = recvBuf;
+            string srecv = recvBuf;
             srecv = srecv.substr(srecv.length() - 3);
             cout << clientNum << " " << srecv << endl;
         } while (1);
@@ -422,12 +428,12 @@ void show()
         if (_kbhit())
         {
             getch();
-            send(sockC, "\r\nclose\r\n", strlen("\r\nclose\r\n"), 0);
+            send_message(sockC, "\r\nclose\r\n");
             break;
         }
         else
         {
-            send(sockC, "\r\nnext\r\n", strlen("\r\nnext\r\n"), 0);
+            send_message(sockC, "\r\nnext\r\n");
         }
         Sleep(500);
     }
@@ -435,16 +441,13 @@ void show()
 void cmd()
 {
     char cinBuf[8192] = {0};
-    char recvBuf[8192] = {0};
-    char recvInfo1[8192] = {0};
-    char recvInfo2[8192] = {0};
+    string recvInfo1;
+    string recvInfo2;
+    string recvBuf;
     string cmds;
     while (1)
     {
         memset(cinBuf, 0, sizeof(cinBuf));
-        memset(recvBuf, 0, sizeof(recvBuf));
-        memset(recvInfo1, 0, sizeof(recvInfo1));
-        memset(recvInfo2, 0, sizeof(recvInfo2));
         cout << "Entry \"exit\" to exit:";
         cin.getline(cinBuf, 8191);
         cmds = cinBuf;
@@ -452,18 +455,26 @@ void cmd()
         {
             break;
         }
-        send(sockC, ("cmd " + cmds).c_str(), strlen(("cmd " + cmds).c_str()), 0);
-        recv(sockC, recvBuf, sizeof(recvBuf), 0);
-        if (strcmp(recvBuf, "\r\nshow\r\n") == 0)
+        send_message(sockC, ("cmd " + cmds));
+        recvBuf.clear();
+        receive_message(sockC, recvBuf);
+        if (strcmp(recvBuf.c_str(), "\r\nsee\r\n") == 0)
         {
             int clientNum = 0;
             cout << "__________Clients List__________" << endl;
             do
             {
-                memset(recvBuf, 0, sizeof(recvBuf));
-                recv(sockC, recvBuf, 2048, 0);
-                if (strcmp(recvBuf, "\r\n\r\nend\r\n\r\n") == 0)
+                try
                 {
+                    receive_message(sockC, recvBuf);
+                }
+                catch (const std::exception &e)
+                {
+                    std::cerr << e.what() << '\n';
+                }
+                if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
+                {
+
                     break;
                 }
                 clientNum++;
@@ -477,19 +488,19 @@ void cmd()
             }
             cout << "__________Clients List__________" << endl;
         }
-        memset(recvBuf, 0, sizeof(recvBuf));
-        recv(sockC, recvBuf, sizeof(recvBuf), 0);
-        if (strcmp(recvBuf, "\r\nok\r\n") == 0)
+        recvBuf.clear();
+        receive_message(sockC, recvBuf);
+        if (strcmp(recvBuf.c_str(), "\r\nok\r\n") == 0)
         {
-            recv(sockC, recvInfo1, sizeof(recvInfo1), 0);
-            recv(sockC, recvInfo2, sizeof(recvInfo2), 0);
+            receive_message(sockC, recvInfo1);
+            receive_message(sockC, recvInfo2);
             SetColor(10, 0); // green
-            cout << "Command executed successfully" << endl;
+            cout << "Command executed successfully127" << endl;
             cout << "Number of Client: " << recvInfo2 << endl;
             cout << "Number of clients successfully executing instructions: " << recvInfo1 << endl;
             SetColor(15, 0); // white
         }
-        else if (strcmp(recvBuf, "\r\ncmd error\r\n") == 0)
+        else if (strcmp(recvBuf.c_str(), "\r\ncmd error\r\n") == 0)
         {
             SetColor(4, 0); // red
             cout << "Command Error or Server Error!" << endl;
@@ -547,7 +558,7 @@ void WhenClose()
         MessageBox(NULL, e.what(), "Error", MB_OK);
     }
     closeP = true;
-    send(healthyBeat, "\r\nClose\r\n", strlen("\r\nClose\r\n"), 0);
+    send_message(healthyBeat, "\r\nClose\r\n");
     closesocket(healthyBeat);
     closesocket(sockC);
     return;
@@ -567,14 +578,14 @@ int main()
     {
         return WSAGetLastError();
     }
-    char recvBuf[1240] = {0};
-    send(sockC, "Server", strlen("Server"), 0);
-    recv(sockC, recvBuf, sizeof(recvBuf), 0);
+    string recvBuf;
+    send_message(sockC, "Server");
+    receive_message(sockC, recvBuf);
     if (!login(sockC))
     {
         return -4096;
     }
-    send(healthyBeat, SEID.c_str(), strlen(SEID.c_str()), 0);
+    send_message(healthyBeat, SEID.c_str());
     healthyCheckThread = thread(healthyCheck, healthyBeat);
     pageShowThread = thread(pageShow);
     closeCheak.setRunFun((void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose);

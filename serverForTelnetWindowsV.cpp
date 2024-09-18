@@ -336,6 +336,8 @@ void saveData();
 void dataSave();
 void passData();
 void loadData();
+bool send_message(SOCKET sock, const std::string &message);
+bool receive_message(SOCKET sock, std::string &message);
 int main(int, char **);
 
 BOOL WINAPI HandlerRoutine(DWORD dwCtrlType)
@@ -408,11 +410,11 @@ void HealthyCheckByServer(const string SEID)
     {
         srand(time(NULL));
         string sendMsg = to_string(rand() % 1000000000);
-        char buf[128] = {0};
+        string buf;
         ServerSEIDMap[SEID].getServerHealthySocketLock();
-        int state = send(ServerSEIDMap[SEID].socketH, sendMsg.c_str(), sendMsg.length(), 0);
-        int state1 = recv(ServerSEIDMap[SEID].socketH, buf, sizeof(buf), 0);
-        if (strcmp(buf, "\r\nClose\r\n") == 0)
+        int state = send_message(ServerSEIDMap[SEID].socketH, sendMsg);
+        int state1 = receive_message(ServerSEIDMap[SEID].socketH, buf);
+        if (strcmp(buf.c_str(), "\r\nClose\r\n") == 0)
         {
             ServerSEIDMap[SEID].getOtherValueLock();
             ServerSEIDMap[SEID].isBack = true;
@@ -423,7 +425,7 @@ void HealthyCheckByServer(const string SEID)
             cout << "unhelathy";
             return;
         }
-        if (strcmp(buf, sendMsg.c_str()) != 0 || ServerSEIDMap[SEID].isBack || state <= 0 || state1 <= 0)
+        if (strcmp(buf.c_str(), sendMsg.c_str()) != 0 || ServerSEIDMap[SEID].isBack || state <= 0 || state1 <= 0)
         {
             ServerSEIDMap[SEID].getOtherValueLock();
             ServerSEIDMap[SEID].isBack = true;
@@ -448,11 +450,11 @@ void HealthyCheckByClient(string SEID)
     {
         srand(time(NULL));
         string sendMsg = to_string(rand() % 1000000000);
-        char buf[128] = {0};
+        string buf;
         ClientSEIDMap[SEID].getServerHealthySocketLock();
-        int state1 = send(ClientSEIDMap[SEID].socketH, sendMsg.c_str(), sendMsg.length(), 0);
-        int state2 = recv(ClientSEIDMap[SEID].socketH, buf, sizeof(buf), 0);
-        if (strcmp(buf, sendMsg.c_str()) != 0 || ClientSEIDMap[SEID].isBack || state2 <= 0 || state1 <= 0)
+        int state1 = send_message(ClientSEIDMap[SEID].socketH, sendMsg);
+        int state2 = receive_message(ClientSEIDMap[SEID].socketH, buf);
+        if (strcmp(buf.c_str(), sendMsg.c_str()) != 0 || ClientSEIDMap[SEID].isBack || state2 <= 0 || state1 <= 0)
         {
             ClientSEIDMap[SEID].getOtherValueLock();
             ClientSEIDMap[SEID].isBack = true;
@@ -482,20 +484,20 @@ int showForSend(string seid, filter f, bool startIf = false, ClientSocketFlagStr
             canShowClient++;
             string sendBuf = ClientMap[i - 1].ClientWanIp + " " + ClientMap[i - 1].ClientLanIp + " " + to_string(ClientMap[i - 1].ClientConnectPort) + " " + to_string(ClientMap[i - 1].state);
             ServerSEIDMap[seid].getServerSocketLock();
-            send(s, sendBuf.c_str(), sendBuf.length(), 0);
+            send_message(s, sendBuf);
             ServerSEIDMap[seid].releaseServerSocketLock();
         }
     }
     ClientMapLock.exchange(false, std::memory_order_release); // 解锁
     ServerSEIDMap[seid].getServerSocketLock();
-    send(s, "\r\n\r\nend\r\n\r\n", strlen("\r\n\r\nend\r\n\r\n"), 0);
+    send_message(s, "\r\n\r\nend\r\n\r\n");
     ServerSEIDMap[seid].releaseServerSocketLock();
     return canShowClient;
 }
 void Connect(string seid, vector<string> cmods, int cmodsNum)
 {
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
-    char recvBuf[1024] = {0};
+    string recvBuf;
     while (1)
     {
         ServerSEIDMap[seid].getOtherValueLock();
@@ -505,7 +507,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
         filter temp;
         showForSend(seid, temp, true, ClientSocketFlagStruct::Online);
         ServerSEIDMap[seid].getServerSocketLock();
-        int state = recv(s, recvBuf, sizeof(recvBuf), 0);
+        int state = receive_message(s, recvBuf);
         ServerSEIDMap[seid].releaseServerSocketLock();
         if (state == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
         {
@@ -513,15 +515,15 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
         }
         else if (state > 0)
         {
-            if (strcmp(recvBuf, "\r\nexit\r\n") == 0)
+            if (strcmp(recvBuf.c_str(), "\r\nexit\r\n") == 0)
             {
                 break;
             }
-            else if (strcmp(recvBuf, "\r\nnext\r\n"))
+            else if (strcmp(recvBuf.c_str(), "\r\nnext\r\n"))
             {
                 continue;
             }
-            int setClientId = atoi(recvBuf);
+            int setClientId = atoi(recvBuf.c_str());
             SOCKET ClientSocket = INVALID_SOCKET;
             for (int i = 0; i < ClientMap.size(); i++)
             {
@@ -540,13 +542,13 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
             if (ClientSocket != INVALID_SOCKET)
             {
                 ServerSEIDMap[seid].getServerSocketLock();
-                send(s, "\r\n\r\nsec\r\n\r\n", strlen("\r\n\r\nsec\r\n\r\n"), 0);
+                send_message(s, "\r\n\r\nsec\r\n\r\n");
                 ServerSEIDMap[seid].releaseServerSocketLock();
                 while (1)
                 {
-                    char buf[1024] = {0};
+                    string buf;
                     ServerSEIDMap[seid].getServerSocketLock();
-                    int state = recv(s, buf, sizeof(buf), 0);
+                    int state = receive_message(s, buf);
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     if (state == SOCKET_ERROR)
                     {
@@ -554,14 +556,14 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
                     }
                     else if (state > 0)
                     {
-                        if (strcmp(buf, "\r\nfexit\r\n") == 0)
+                        if (strcmp(buf.c_str(), "\r\nfexit\r\n") == 0)
                         {
-                            send(ClientSocket, "exit", strlen("exit"), 0);
+                            send_message(ClientSocket, "exit\r\n");
                             break;
                         }
                         else
                         {
-                            send(ClientSocket, buf, strlen(buf), 0);
+                            send_message(ClientSocket, buf);
                         }
                     }
                 }
@@ -570,7 +572,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
             else
             {
                 ServerSEIDMap[seid].getServerSocketLock();
-                send(s, "\r\n\r\nfail\r\n\r\n", strlen("\r\n\r\nfail\r\n\r\n"), 0);
+                send_message(s, "\r\n\r\nfail\r\n\r\n");
                 ServerSEIDMap[seid].releaseServerSocketLock();
             }
         }
@@ -584,7 +586,7 @@ int delForId(int ClientId)
     ClientMapLock.exchange(false, std::memory_order_release); // 解锁
     if (ClientSocket != INVALID_SOCKET && ClientMap[ClientId - 1].state != ClientSocketFlagStruct::Use)
     {
-        if (send(ClientSocket, "del", strlen("del"), 0) != SOCKET_ERROR)
+        if (send_message(ClientSocket, "del") != SOCKET_ERROR)
         {
             return 0;
         }
@@ -602,7 +604,7 @@ int delForId(int ClientId)
 void del(string seid, vector<string> cmods, int cmodsNum)
 {
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
-    char recvBuf[1024] = {0};
+    string recvBuf;
     while (1)
     {
         ServerSEIDMap[seid].getOtherValueLock();
@@ -612,7 +614,7 @@ void del(string seid, vector<string> cmods, int cmodsNum)
         filter temp;
         showForSend(seid, temp);
         ServerSEIDMap[seid].getServerSocketLock();
-        int state = recv(s, recvBuf, sizeof(recvBuf), 0);
+        int state = receive_message(s, recvBuf);
         ServerSEIDMap[seid].releaseServerSocketLock();
         if (state == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
         {
@@ -620,28 +622,28 @@ void del(string seid, vector<string> cmods, int cmodsNum)
         }
         else if (state > 0)
         {
-            if (strcmp(recvBuf, "\r\nexit\r\n") == 0)
+            if (strcmp(recvBuf.c_str(), "\r\nexit\r\n") == 0)
             {
                 break;
             }
-            else if (strcmp(recvBuf, "\r\nnext\r\n") == 0)
+            else if (strcmp(recvBuf.c_str(), "\r\nnext\r\n") == 0)
             {
                 continue;
             }
-            int setClientId = atoi(recvBuf);
+            int setClientId = atoi(recvBuf.c_str());
             int res = delForId(setClientId);
             ServerSEIDMap[seid].getServerSocketLock();
             if (res == 0)
             {
-                send(s, "\r\n\r\nok\r\n\r\n", strlen("\r\n\r\nok\r\n\r\n"), 0);
+                send_message(s, "\r\n\r\nok\r\n\r\n");
             }
             else if (res == 2)
             {
-                send(s, "\r\n\r\nUse\r\n\r\n", strlen("\r\n\r\nUse\r\n\r\n"), 0);
+                send_message(s, "\r\n\r\nUse\r\n\r\n");
             }
             else
             {
-                send(s, "\r\n\r\nUnError\r\n\r\n", strlen("\r\n\r\nUnError\r\n\r\n"), 0);
+                send_message(s, "\r\n\r\nUnError\r\n\r\n");
             }
             ServerSEIDMap[seid].releaseServerSocketLock();
         }
@@ -651,7 +653,7 @@ void show(string seid, vector<string> cmods, int cmodsNum)
 {
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     cout << "SHOW";
-    char recvBuf[1024] = {0};
+    string recvBuf;
     while (1)
     {
         filter temp;
@@ -661,13 +663,13 @@ void show(string seid, vector<string> cmods, int cmodsNum)
         ServerSEIDMap[seid].releaseOtherValueLock();
         showForSend(seid, temp);
         ServerSEIDMap[seid].getServerSocketLock();
-        int state = recv(s, recvBuf, sizeof(recvBuf), 0);
+        int state = receive_message(s, recvBuf);
         ServerSEIDMap[seid].releaseServerSocketLock();
         if (state == SOCKET_ERROR)
         {
             return;
         }
-        else if (strcmp(recvBuf, "\r\nclose\r\n") == 0)
+        else if (strcmp(recvBuf.c_str(), "\r\nclose\r\n") == 0)
         {
             return;
         }
@@ -697,7 +699,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             return;
         ServerSEIDMap[seid].releaseOtherValueLock();
         ServerSEIDMap[seid].getServerSocketLock();
-        send(s, "\r\ndel\r\n", strlen("\r\ndel\r\n"), 0);
+        send_message(s, "\r\ndel\r\n");
         ServerSEIDMap[seid].releaseServerSocketLock();
         for (int i = 2; i <= cmodsNum; i += 3)
         {
@@ -711,7 +713,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 5:
                 if (!f.addRule(filter::ruleDataType::port, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -719,7 +721,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 6:
                 if (!f.addRule(filter::ruleDataType::wanip, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -727,7 +729,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 7:
                 if (!f.addRule(filter::ruleDataType::lanip, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -735,7 +737,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 8:
                 if (!f.addRule(filter::ruleDataType::all, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -758,9 +760,9 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
         if (ServerSEIDMap[seid].isBack)
             return;
         ServerSEIDMap[seid].getServerSocketLock();
-        send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
-        send(s, to_string(sectClient).c_str(), to_string(sectClient).length(), 0);
-        send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
+        send_message(s, "\r\nok\r\n");
+        send_message(s, to_string(sectClient).c_str());
+        send_message(s, to_string(ClientMap.size()).c_str());
         ServerSEIDMap[seid].releaseServerSocketLock();
     }
     else if (strcmp(cmods[1].c_str(), "cmd") == 0 && cmodsNum >= 4)
@@ -770,7 +772,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             return;
         ServerSEIDMap[seid].releaseOtherValueLock();
         ServerSEIDMap[seid].getServerSocketLock();
-        send(s, "\r\ncmd\r\n", strlen("\r\ncmd\r\n"), 0);
+        send_message(s, "\r\ncmd\r\n");
         ServerSEIDMap[seid].releaseServerSocketLock();
         int cmdstart = 0;
         // 一条指令
@@ -791,7 +793,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 5:
                 if (!f.addRule(filter::ruleDataType::port, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -799,7 +801,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 6:
                 if (!f.addRule(filter::ruleDataType::wanip, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -807,14 +809,14 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 7:
                 if (!f.addRule(filter::ruleDataType::lanip, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
             case 8:
                 if (!f.addRule(filter::ruleDataType::all, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -829,7 +831,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
                 return;
             ServerSEIDMap[seid].releaseOtherValueLock();
             ServerSEIDMap[seid].getServerSocketLock();
-            send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+            send_message(s, "\r\ncmd error\r\n");
             ServerSEIDMap[seid].releaseServerSocketLock();
             return;
         }
@@ -851,7 +853,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             if (f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)) && ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
             {
                 sectClient++;
-                send(ClientMap[i - 1].ClientSocket, sendBuf.c_str(), sendBuf.length(), 0); // 发送指令至Client
+                send_message(ClientMap[i - 1].ClientSocket, sendBuf); // 发送指令至Client
             }
         }
         ClientMapLock.exchange(false, std::memory_order_release); // 解锁
@@ -860,9 +862,9 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             return;
         ServerSEIDMap[seid].releaseOtherValueLock();
         ServerSEIDMap[seid].getServerSocketLock();
-        send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
-        send(s, to_string(sectClient).c_str(), to_string(sectClient).length(), 0);
-        send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
+        send_message(s, "\r\nok\r\n");
+        send_message(s, to_string(sectClient).c_str());
+        send_message(s, to_string(ClientMap.size()).c_str());
         ServerSEIDMap[seid].releaseServerSocketLock();
     }
     else if (strcmp(cmods[1].c_str(), "show") == 0 && cmodsNum >= 3)
@@ -872,7 +874,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             return;
         ServerSEIDMap[seid].releaseOtherValueLock();
         ServerSEIDMap[seid].getServerSocketLock();
-        send(s, "\r\nshow\r\n", strlen("\r\nshow\r\n"), 0);
+        send_message(s, "\r\nsee\r\n");
         cout << "show";
         ServerSEIDMap[seid].releaseServerSocketLock();
         for (int i = 2; i <= cmodsNum && (cmodsNum - i) >= 2; i += 3)
@@ -883,7 +885,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 5:
                 if (!f.addRule(filter::ruleDataType::port, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -891,7 +893,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 6:
                 if (!f.addRule(filter::ruleDataType::wanip, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -899,7 +901,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 7:
                 if (!f.addRule(filter::ruleDataType::lanip, cmods[i + 1], cmods[i + 2]))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
@@ -907,13 +909,13 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             case 8:
                 if (!f.addRule(filter::ruleDataType::all, NULL, NULL))
                 {
-                    send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                    send_message(s, "\r\ncmd error\r\n");
                     ServerSEIDMap[seid].releaseServerSocketLock();
                     return;
                 }
                 break;
             default:
-                send(s, "\r\ncmd error\r\n", strlen("\r\ncmd error\r\n"), 0);
+                send_message(s, "\r\ncmd error\r\n");
                 return;
             }
             ServerSEIDMap[seid].releaseServerSocketLock();
@@ -924,9 +926,9 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             return;
         ServerSEIDMap[seid].releaseOtherValueLock();
         ServerSEIDMap[seid].getServerSocketLock();
-        send(s, "\r\nok\r\n", strlen("\r\nok\r\n"), 0);
-        send(s, to_string(showClient).c_str(), to_string(showClient).length(), 0);
-        send(s, to_string(ClientMap.size()).c_str(), to_string(ClientMap.size()).length(), 0);
+        send_message(s, "\r\nok\r\n");
+        send_message(s, to_string(showClient).c_str());
+        send_message(s, to_string(ClientMap.size()).c_str());
         ServerSEIDMap[seid].releaseServerSocketLock();
     }
 }
@@ -1099,11 +1101,11 @@ void ServerRS(SOCKET s)
         if (ServerSEIDMap[(string)SEID].isBack)
             cout << "is back\n";
         ServerSEIDMap[SEID].releaseOtherValueLock();
-        char recvBuf[8192] = {0};
+        string recvBuf;
         cout << "start get lock\n";
         ServerSEIDMap[SEID].getServerSocketLock();
         cout << "recv:" << recvBuf;
-        int state = recv(s, recvBuf, sizeof(recvBuf), 0);
+        int state = receive_message(s, recvBuf);
 
         ServerSEIDMap[SEID].releaseServerSocketLock();
         if (state == SOCKET_ERROR)
@@ -1153,15 +1155,15 @@ void ServerRS(SOCKET s)
 void ClientRS(SOCKET s)
 {
     cout << "ok\n";
-    char recvBuf[8192] = {0};
-    recv(s, recvBuf, sizeof(recvBuf), 0);
+    string recvBuf;
+    receive_message(s, recvBuf);
     istringstream iss((string)recvBuf);
     string ClientWanIp, ClientLanIp, ClientPort, ClientState;
     iss >> ClientWanIp >> ClientLanIp >> ClientPort;
     joinClient(ClientWanIp, ClientLanIp, ClientPort, s, time(NULL), 0);
     string SEID = createSEID(s, ClientLanIp + ClientWanIp);
     ClientSEIDMap[SEID].isSEIDExit = true;
-    send(s, SEID.c_str(), SEID.length(), 0);
+    send_message(s, SEID);
     cout << "ok\n";
     while (!ClientSEIDMap[(string)SEID].isSocketExit)
         ;
@@ -1327,47 +1329,47 @@ int main(int argc, char **argv)
     cout << "server start";
     while (true)
     {
-        char cbuf[1024] = {0};
+        string buf;
         SOCKET aptSocket;
         sockaddr_in aptsocketAddr = {0};
         int len = sizeof(aptsocketAddr);
         aptSocket = accept(ListenSocket, (SOCKADDR *)&aptsocketAddr, &len);
         if (aptSocket != INVALID_SOCKET)
         {
-            recv(aptSocket, cbuf, 512, 0);
-            if (strcmp(cbuf, "Client") == 0)
+            receive_message(aptSocket, buf);
+            if (strcmp(buf.c_str(), "Client") == 0)
             {
-                send(aptSocket, "Recv", strlen("Recv"), 0);
+                send_message(aptSocket, "Recv");
                 while (ClientQueueLock.exchange(true, std::memory_order_acquire))
                     ;
                 ClientSocketQueue.push(aptSocket);
                 ClientQueueLock.exchange(false, std::memory_order_release);
                 // aptSocket = INVALID_SOCKET;
             }
-            else if (strcmp(cbuf, "Server") == 0)
+            else if (strcmp(buf.c_str(), "Server") == 0)
             {
                 cout << "One New\n";
-                send(aptSocket, "Recv", strlen("Recv"), 0);
+                send_message(aptSocket, "Recv");
                 while (ServerQueueLock.exchange(true, std::memory_order_acquire))
                     ;
                 ServerSocketQueue.push(aptSocket);
                 ServerQueueLock.exchange(false, std::memory_order_release);
                 // aptSocket = INVALID_SOCKET;
             }
-            else if (ServerSEIDMap[(string)cbuf].isSEIDExit)
+            else if (ServerSEIDMap[buf].isSEIDExit)
             {
-                ServerSEIDMap[(string)cbuf].getServerHealthySocketLock();
-                ServerSEIDMap[(string)cbuf].getOtherValueLock();
-                ServerSEIDMap[(string)cbuf].socketH = aptSocket;
-                ServerSEIDMap[(string)cbuf].isSocketExit = true;
-                ServerSEIDMap[(string)cbuf].releaseOtherValueLock();
-                ServerSEIDMap[(string)cbuf].releaseServerHealthySocketLock();
+                ServerSEIDMap[buf].getServerHealthySocketLock();
+                ServerSEIDMap[buf].getOtherValueLock();
+                ServerSEIDMap[buf].socketH = aptSocket;
+                ServerSEIDMap[buf].isSocketExit = true;
+                ServerSEIDMap[buf].releaseOtherValueLock();
+                ServerSEIDMap[buf].releaseServerHealthySocketLock();
             }
-            else if (ClientSEIDMap[(string)cbuf].isSEIDExit)
+            else if (ClientSEIDMap[buf].isSEIDExit)
             {
 
-                ClientSEIDMap[(string)cbuf].socketH = aptSocket;
-                ClientSEIDMap[(string)cbuf].isSocketExit = true;
+                ClientSEIDMap[buf].socketH = aptSocket;
+                ClientSEIDMap[buf].isSocketExit = true;
             }
         }
     }
