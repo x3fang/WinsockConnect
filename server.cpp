@@ -191,9 +191,6 @@ void healthyCheck(SOCKET HealthyBeat)
             ServerHealthCheck.exchange(false, std::memory_order_release);
             return;
         }
-        SetColor(4, 0);
-        cout << "healthyCheck" << endl;
-        SetColor(15, 0);
     }
 }
 int login(SOCKET s)
@@ -206,7 +203,8 @@ int login(SOCKET s)
     MD5 m;
     try
     {
-        coin("password:", password);
+        // coin("password:", password);
+        password = "08d0a4449012a585c411c84202e64a73";
         for (int i = 1; i <= 5 && !loginTRUE; i++)
         {
             m.init();
@@ -441,7 +439,6 @@ void cmd()
     char recvInfo1[8192] = {0};
     char recvInfo2[8192] = {0};
     string cmds;
-    system("cls");
     while (1)
     {
         memset(cinBuf, 0, sizeof(cinBuf));
@@ -460,10 +457,10 @@ void cmd()
         if (strcmp(recvBuf, "\r\nshow\r\n") == 0)
         {
             int clientNum = 0;
-            system("cls");
             cout << "__________Clients List__________" << endl;
             do
             {
+                memset(recvBuf, 0, sizeof(recvBuf));
                 recv(sockC, recvBuf, 2048, 0);
                 if (strcmp(recvBuf, "\r\n\r\nend\r\n\r\n") == 0)
                 {
@@ -480,6 +477,7 @@ void cmd()
             }
             cout << "__________Clients List__________" << endl;
         }
+        memset(recvBuf, 0, sizeof(recvBuf));
         recv(sockC, recvBuf, sizeof(recvBuf), 0);
         if (strcmp(recvBuf, "\r\nok\r\n") == 0)
         {
