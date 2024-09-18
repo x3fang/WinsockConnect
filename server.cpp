@@ -203,8 +203,7 @@ int login(SOCKET s)
     MD5 m;
     try
     {
-        // coin("password:", password);
-        password = "08d0a4449012a585c411c84202e64a73";
+        coin("password:", password);
         for (int i = 1; i <= 5 && !loginTRUE; i++)
         {
             m.init();

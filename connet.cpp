@@ -15,7 +15,8 @@
 #include <intrin.h>
 #include <fstream>
 #include <atomic>
-#include "isdebug.h"
+#include <sstream>
+#include "..\\isdebug.h"
 #pragma comment(lib, "ws2_32")
 int MasterPort;
 using namespace std;

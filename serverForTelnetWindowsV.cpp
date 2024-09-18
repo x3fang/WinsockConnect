@@ -1294,7 +1294,6 @@ void loadData()
     {
         inPassword >> password;
         cout << "Load Password:" << password << endl;
-        password = "08d0a4449012a585c411c84202e64a73";
     }
     inPassword.close();
     inss.open("clientData.data", ios::in);
