@@ -42,14 +42,21 @@ typedef struct SEIDForSocketStruct
     bool isUse;
     string SEID;
     SOCKET ServerSocket;
+    atomic<bool> serverSocketLock;
+    atomic<bool> serverHealthySocketLock;
+    atomic<bool> otherValueLook;
 
     SEIDForSocketStruct()
     {
+        SEID.clear();
+        ServerSocket = INVALID_SOCKET;
         socketH = INVALID_SOCKET;
         isSEIDExit = false;
         isSocketExit = false;
         isBack = false;
         isUse = false;
+        serverSocketLock = false;
+        serverHealthySocketLock = false;
     }
 };
 typedef struct ClientSocketFlagStruct
@@ -263,7 +270,7 @@ map<string, int> StringToInt =
         {"connect", 1},
         {"del", 2},
         {"show", 3},
-        {"comd", 4}
+        {"cmd", 4}
 
 };
 WSADATA wsaData;
@@ -285,12 +292,12 @@ int initServer(SOCKET &, sockaddr_in &, int);
 string StringTime(time_t);
 void HealthyCheckByServer(string);
 void HealthyCheckByClient(string);
-int showForSend(SOCKET, filter, bool, ClientSocketFlagStruct::states);
-void Connect(SOCKET, vector<string>, int);
+int showForSend(string, filter, bool, ClientSocketFlagStruct::states);
+void Connect(string, vector<string>, int);
 int delForId(int);
-void del(SOCKET, vector<string>, int);
-void show(SOCKET, vector<string>, int);
-void cmod(SOCKET, vector<string>, int);
+void del(string, vector<string>, int);
+void show(string, vector<string>, int);
+void cmod(string, vector<string>, int);
 string createSEID(SOCKET, string);
 void joinClient(string, string, string, SOCKET, unsigned long long int, unsigned long long int);
 void ServerRS(SOCKET);
@@ -378,6 +385,7 @@ void HealthyCheckByServer(string SEID)
             ServerSEIDMap[SEID].isBack = true;
             ServerSEIDMap[SEID].isSocketExit = false;
             closesocket(ServerSEIDMap[SEID].socketH);
+            cout << "unhelathy";
             return;
         }
         if (strcmp(buf, sendMsg.c_str()) != 0 || ServerSEIDMap[SEID].isBack || state <= 0 || state1 <= 0)
@@ -443,7 +451,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
         if (ServerSEIDMap[seid].isBack)
             break;
         filter temp;
-        showForSend(s, temp, true, ClientSocketFlagStruct::Online);
+        showForSend(seid, temp, true, ClientSocketFlagStruct::Online);
         int state = recv(s, recvBuf, sizeof(recvBuf), 0);
         if (state == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
         {
@@ -598,7 +606,9 @@ void show(string seid, vector<string> cmods, int cmodsNum)
 void cmod(string seid, vector<string> cmods, int cmodsNum)
 {
     //[del,cmd,show][all,]
+    cout << "1321222q2312";
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
+    cout << "1321222q2312";
     map<string, int> StringToIntInComd = {
         {"run", 1},
         {"show", 2},
@@ -908,7 +918,6 @@ void ServerRS(SOCKET s)
     {
         m.init();
         string recvBuf;
-        cout << password << endl;
         receive_message(s, recvBuf);
         loginYZM = m.encode(StringTime(time(NULL)) + lastloginYZM + password);
         cout << loginYZM << endl
@@ -963,16 +972,16 @@ void ServerRS(SOCKET s)
             switch (StringToInt[cmods[0]])
             {
             case 1:
-                Connect(s, cmods, tokenNum); // ok
+                Connect(SEID, cmods, tokenNum); // ok
                 break;
             case 2:
-                del(s, cmods, tokenNum); // ok
+                del(SEID, cmods, tokenNum); // ok
                 break;
             case 3:
-                show(s, cmods, tokenNum); // ok
+                show(SEID, cmods, tokenNum); // ok
                 break;
             case 4:
-                cmod(s, cmods, tokenNum); // ok
+                cmod(SEID, cmods, tokenNum); // ok
                 break;
             default:
                 break;
@@ -1014,7 +1023,6 @@ void ServerConnect()
             ;
         if (ServerSocketQueue.size() > 0)
         {
-            cout << "32423543";
             SOCKET ServerSocket = ServerSocketQueue.front();
             ServerSocketQueue.pop();
             ServerRSThreadArry.push_back(thread(ServerRS, ServerSocket));
@@ -1030,7 +1038,6 @@ void ClientConnect()
             ;
         if (ClientSocketQueue.size() > 0)
         {
-            cout << "oj\n";
             SOCKET ClientSocket = ClientSocketQueue.front();
             ClientSocketQueue.pop();
             ClientRSThreadArry.push_back(thread(ClientRS, ClientSocket));
@@ -1122,6 +1129,7 @@ void loadData()
     else
     {
         inPassword >> password;
+        cout << "Load Password:" << password << endl;
     }
     inPassword.close();
     inss.open("clientData.data", ios::in);
@@ -1145,13 +1153,15 @@ int main(int argc, char **argv)
     system("chcp 65001>nul");
     SetConsoleCtrlHandler(HandlerRoutine, TRUE);
     loadData();
-    cout << "loadData OK";
+    cout << "loadData OK\n";
+    cout << "password:" << password << endl;
     initServer(ListenSocket, service, 2060);
 
     thread ClientConnectThread = thread(ClientConnect);
     thread ServerConnectThread = thread(ServerConnect);
     thread dataSaveThread = thread(dataSave);
     thread PassDataThread = thread(passData);
+    cout << "server start";
     while (true)
     {
         char cbuf[1024] = {0};
@@ -1164,7 +1174,6 @@ int main(int argc, char **argv)
             recv(aptSocket, cbuf, 512, 0);
             if (strcmp(cbuf, "Client") == 0)
             {
-                cout << "OKcc";
                 send(aptSocket, "Recv", strlen("Recv"), 0);
                 while (ClientQueueLock.exchange(true, std::memory_order_acquire))
                     ;
@@ -1174,7 +1183,6 @@ int main(int argc, char **argv)
             }
             else if (strcmp(cbuf, "Server") == 0)
             {
-                cout << "OKss";
                 send(aptSocket, "Recv", strlen("Recv"), 0);
                 while (ServerQueueLock.exchange(true, std::memory_order_acquire))
                     ;

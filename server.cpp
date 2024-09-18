@@ -45,6 +45,12 @@ sockaddr_in sockAddr, healthyBeatAddr;
 string SEID;
 bool ServerState = false;
 std::atomic<bool> ServerHealthCheck(false);
+void WhenClose();
+void SetColor(unsigned short forecolor = 4, unsigned short backgroudcolor = 0)
+{
+    HANDLE hCon = GetStdHandle(STD_OUTPUT_HANDLE);             // 获取缓冲区句柄
+    SetConsoleTextAttribute(hCon, forecolor | backgroudcolor); // 设置文本及背景色
+}
 bool send_message(SOCKET sock, const std::string &message)
 {
     std::ostringstream oss;
@@ -115,12 +121,14 @@ void coin(string couts, string &cins)
 {
     cout << couts;
     cin >> cins;
+    cin.ignore();
     return;
 }
 void coin(string couts, int &cins)
 {
     cout << couts;
     cin >> cins;
+    cin.ignore();
     return;
 }
 int initClient(SOCKET &s, sockaddr_in &sockAddr, string serverIp, int serverPort)
@@ -183,6 +191,9 @@ void healthyCheck(SOCKET HealthyBeat)
             ServerHealthCheck.exchange(false, std::memory_order_release);
             return;
         }
+        SetColor(4, 0);
+        cout << "healthyCheck" << endl;
+        SetColor(15, 0);
     }
 }
 int login(SOCKET s)
@@ -272,6 +283,7 @@ void Connect()
         if (_kbhit())
         {
             cin >> kb_cin;
+            cin.ignore();
             if (kb_cin == 0)
             {
                 send(sockC, "\r\nexit\r\n", strlen("\r\nexit\r\n"), 0);
@@ -350,6 +362,7 @@ void del()
         if (_kbhit())
         {
             cin >> kb_cin;
+            cin.ignore();
             if (kb_cin == 0)
             {
                 send(sockC, "\r\nexit\r\n", strlen("\r\nexit\r\n"), 0);
@@ -423,11 +436,67 @@ void show()
 }
 void cmd()
 {
+    char cinBuf[8192] = {0};
+    char recvBuf[8192] = {0};
+    char recvInfo1[8192] = {0};
+    char recvInfo2[8192] = {0};
     string cmds;
+    system("cls");
     while (1)
     {
-        system("cls");
-        getline(cin, cmds);
+        memset(cinBuf, 0, sizeof(cinBuf));
+        memset(recvBuf, 0, sizeof(recvBuf));
+        memset(recvInfo1, 0, sizeof(recvInfo1));
+        memset(recvInfo2, 0, sizeof(recvInfo2));
+        cout << "Entry \"exit\" to exit:";
+        cin.getline(cinBuf, 8191);
+        cmds = cinBuf;
+        if (strcmp(cmds.c_str(), "exit") == 0)
+        {
+            break;
+        }
+        send(sockC, ("cmd " + cmds).c_str(), strlen(("cmd " + cmds).c_str()), 0);
+        recv(sockC, recvBuf, sizeof(recvBuf), 0);
+        if (strcmp(recvBuf, "\r\nshow\r\n") == 0)
+        {
+            int clientNum = 0;
+            system("cls");
+            cout << "__________Clients List__________" << endl;
+            do
+            {
+                recv(sockC, recvBuf, 2048, 0);
+                if (strcmp(recvBuf, "\r\n\r\nend\r\n\r\n") == 0)
+                {
+                    break;
+                }
+                clientNum++;
+                string srecv = recvBuf;
+                srecv = srecv.substr(srecv.length() - 3);
+                cout << clientNum << " " << srecv << endl;
+            } while (1);
+            if (clientNum == 0)
+            {
+                cout << "No Clients\n";
+            }
+            cout << "__________Clients List__________" << endl;
+        }
+        recv(sockC, recvBuf, sizeof(recvBuf), 0);
+        if (strcmp(recvBuf, "\r\nok\r\n") == 0)
+        {
+            recv(sockC, recvInfo1, sizeof(recvInfo1), 0);
+            recv(sockC, recvInfo2, sizeof(recvInfo2), 0);
+            SetColor(10, 0); // green
+            cout << "Command executed successfully" << endl;
+            cout << "Number of Client: " << recvInfo2 << endl;
+            cout << "Number of clients successfully executing instructions: " << recvInfo1 << endl;
+            SetColor(15, 0); // white
+        }
+        else if (strcmp(recvBuf, "\r\ncmd error\r\n") == 0)
+        {
+            SetColor(4, 0); // red
+            cout << "Command Error or Server Error!" << endl;
+            SetColor(15, 0); // white
+        }
     }
 }
 void pageShow()
@@ -442,6 +511,7 @@ void pageShow()
              << "5.exit" << endl
              << "Choose:";
         cin >> choose;
+        cin.ignore();
         system("cls");
         switch (choose)
         {
@@ -458,7 +528,7 @@ void pageShow()
             cmd();
             break;
         case 5:
-            ServerState = false;
+            WhenClose();
             break;
         }
         system("cls");
@@ -469,15 +539,23 @@ thread healthyCheckThread;
 thread pageShowThread;
 void WhenClose()
 {
+    try
+    {
+        healthyCheckThread.detach();
+        pageShowThread.detach();
+    }
+    catch (std::exception &e)
+    {
+        MessageBox(NULL, e.what(), "Error", MB_OK);
+    }
     closeP = true;
-    healthyCheckThread.detach();
-    pageShowThread.detach();
+    send(healthyBeat, "\r\nClose\r\n", strlen("\r\nClose\r\n"), 0);
+    closesocket(healthyBeat);
+    closesocket(sockC);
     return;
 }
 int main()
 {
-    closeCheak.setRunFun((void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose);
-    closeCheak.startHook();
     system("chcp 65001>nul");
     do
     {
@@ -501,12 +579,12 @@ int main()
     send(healthyBeat, SEID.c_str(), strlen(SEID.c_str()), 0);
     healthyCheckThread = thread(healthyCheck, healthyBeat);
     pageShowThread = thread(pageShow);
+    closeCheak.setRunFun((void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose);
+    closeCheak.startHook();
     while (1)
     {
         if (closeP)
         {
-            healthyCheckThread.detach();
-            pageShowThread.detach();
             return 0;
         }
         while (ServerHealthCheck.exchange(true, std::memory_order_acquire))
