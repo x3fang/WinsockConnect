@@ -500,6 +500,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
     string recvBuf;
     while (1)
     {
+        recvBuf.clear();
         ServerSEIDMap[seid].getOtherValueLock();
         if (ServerSEIDMap[seid].isBack)
             break;
@@ -508,6 +509,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
         showForSend(seid, temp, true, ClientSocketFlagStruct::Online);
         ServerSEIDMap[seid].getServerSocketLock();
         int state = receive_message(s, recvBuf);
+        cout << recvBuf << endl;
         ServerSEIDMap[seid].releaseServerSocketLock();
         if (state == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
         {

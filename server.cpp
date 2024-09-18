@@ -270,7 +270,7 @@ void Connect()
             }
             clientNum++;
             string srecv = recvBuf;
-            srecv = srecv.substr(srecv.length() - 3);
+            // srecv = srecv.substr(srecv.length() - 3);
             cout << clientNum << " " << srecv << endl;
         } while (1);
         if (clientNum == 0)
@@ -351,7 +351,7 @@ void del()
             }
             clientNum++;
             string srecv = recvBuf;
-            srecv = srecv.substr(srecv.length() - 3);
+            // srecv = srecv.substr(srecv.length() - 3);
             cout << clientNum << " " << srecv << endl;
         } while (1);
         if (clientNum == 0)
@@ -415,7 +415,7 @@ void show()
             }
             clientNum++;
             string srecv = recvBuf;
-            srecv = srecv.substr(srecv.length() - 3);
+            // srecv = srecv.substr(srecv.length() - 3);
             cout << clientNum << " " << srecv << endl;
         } while (1);
         if (clientNum == 0)
@@ -478,7 +478,7 @@ void cmd()
                 }
                 clientNum++;
                 string srecv = recvBuf;
-                srecv = srecv.substr(srecv.length() - 3);
+                // srecv = srecv.substr(srecv.length() - 3);
                 cout << clientNum << " " << srecv << endl;
             } while (1);
             if (clientNum == 0)
