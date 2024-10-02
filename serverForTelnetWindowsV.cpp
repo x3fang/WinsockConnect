@@ -149,13 +149,14 @@ string StringTime(time_t t1)
 }
 void HealthyCheckByServer(const string SEID)
 {
-    int timeout = 1000; // 设置超时时间为 10 秒
+    int timeout = 3000; // 设置超时时间为 3 秒
+    // timeval timeout = {1, 0};
     ServerSEIDMap[SEID].getServerHealthySocketLock();
     try
     {
-        if (SOCKET_ERROR == setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_RCVTIMEO, (char *)timeout, sizeof(int)))
+        if (SOCKET_ERROR == setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout)))
             cout << GetLastError() << endl;
-        if (SOCKET_ERROR == setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_SNDTIMEO, (char *)timeout, sizeof(int)))
+        if (SOCKET_ERROR == setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout, sizeof(timeout)))
             cout << GetLastError() << endl;
     }
     catch (std::runtime_error &e)
@@ -187,7 +188,6 @@ void HealthyCheckByServer(const string SEID)
             ServerSEIDMap[SEID].releaseOtherValueLock();
             closesocket(ServerSEIDMap[SEID].socketH);
             ServerSEIDMap[SEID].releaseServerHealthySocketLock();
-            cout << "unhelathy";
             return;
         }
         if (strcmp(buf.c_str(), sendMsg.c_str()) != 0 || ServerSEIDMap[SEID].isBack || state <= 0 || state1 <= 0)
@@ -206,10 +206,10 @@ void HealthyCheckByServer(const string SEID)
 }
 void HealthyCheckByClient(string SEID)
 {
-    int timeout = 10000; // 设置超时时间为 10 秒
+    int timeout = 3000; // 设置超时时间为 3 秒
     ClientSEIDMap[SEID].getServerHealthySocketLock();
-    setsockopt(ClientSEIDMap[SEID].socketH, SOL_SOCKET, SO_RCVTIMEO, (char *)timeout, sizeof(timeout));
-    setsockopt(ClientSEIDMap[SEID].socketH, SOL_SOCKET, SO_SNDTIMEO, (char *)timeout, sizeof(timeout));
+    setsockopt(ClientSEIDMap[SEID].socketH, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+    setsockopt(ClientSEIDMap[SEID].socketH, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
     ClientSEIDMap[SEID].getServerHealthySocketLock();
     while (1)
     {
@@ -881,8 +881,8 @@ void ClientRS(SOCKET s)
     ClientSEIDMap[SEID].ServerSocket = s;
     ClientSEIDMap[SEID].isSEIDExit = true;
     ClientSEIDMap[SEID].releaseOtherValueLock();
-    joinClient(ClientWanIp, ClientLanIp, ClientPort, time(NULL), 0, SEID);
     send_message(s, SEID);
+    joinClient(ClientWanIp, ClientLanIp, ClientPort, time(NULL), 0, SEID);
     while (true)
     {
         ClientSEIDMap[SEID].getOtherValueLock();
@@ -893,10 +893,13 @@ void ClientRS(SOCKET s)
         }
         ClientSEIDMap[SEID].releaseOtherValueLock();
     }
+    thread HealthyCheckThread = thread(HealthyCheckByClient, SEID);
     while (1)
     {
+
         if (ServerSEIDMap[(string)SEID].isBack)
         {
+            HealthyCheckThread.detach();
             closesocket(s);
             return;
         }
