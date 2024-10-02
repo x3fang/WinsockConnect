@@ -1,298 +1,7 @@
-#pragma comment(lib, "ws2_32.lib")
-// 设置连接器选项
-#pragma comment(linker, "/subsystem:\"windows\" /entry:\"mainCRTStartup\"")
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
-#include <stdio.h>
-#include <iostream>
-#include <random>
-#include <sstream>
-#include <fstream>
-#include <thread>
-#include <time.h>
-#include <atomic>
-#include <algorithm>
-#include <conio.h>
-#include <map>
-#include <queue>
-#include "..\\MD5.h"
-#include "getCmd.h"
-using std::atomic;
-using std::cin;
-using std::cout;
-using std::endl;
-using std::fstream;
-using std::ifstream;
-using std::ios;
-using std::istringstream;
-using std::map;
-using std::ofstream;
-using std::queue;
-using std::string;
-using std::thread;
-using std::to_string;
-using std::vector;
-typedef struct SEIDForSocketStruct
-{
-    SOCKET socketH;
-    bool isSocketExit;
-    bool isSEIDExit;
-    bool isBack;
-    bool isUse;
-    string SEID;
-    SOCKET ServerSocket;
-    atomic<bool> serverSocketLock;
-    atomic<bool> serverHealthySocketLock;
-    atomic<bool> otherValueLock;
-
-    SEIDForSocketStruct()
-    {
-        SEID.clear();
-        ServerSocket = INVALID_SOCKET;
-        socketH = INVALID_SOCKET;
-        isSEIDExit = false;
-        isSocketExit = false;
-        isBack = false;
-        isUse = false;
-        serverSocketLock.exchange(false, std::memory_order_relaxed);
-        serverHealthySocketLock.exchange(false, std::memory_order_relaxed);
-        otherValueLock.exchange(false, std::memory_order_relaxed);
-    }
-    void getServerSocketLock()
-    {
-        while (serverSocketLock.exchange(true, std::memory_order_acquire))
-            ;
-    }
-    void releaseServerSocketLock()
-    {
-        serverSocketLock.exchange(false, std::memory_order_release);
-    }
-    void getServerHealthySocketLock()
-    {
-        while (serverHealthySocketLock.exchange(true, std::memory_order_acquire))
-            ;
-    }
-    void releaseServerHealthySocketLock()
-    {
-        serverHealthySocketLock.exchange(false, std::memory_order_release);
-    }
-    void getOtherValueLock()
-    {
-        while (otherValueLock.exchange(true, std::memory_order_acquire))
-            ;
-    }
-    void releaseOtherValueLock()
-    {
-        otherValueLock.exchange(false, std::memory_order_release);
-    }
-};
-typedef struct ClientSocketFlagStruct
-{
-    SOCKET ClientSocket;
-    string ClientWanIp;
-    string ClientLanIp;
-    unsigned long long int OnlineTime, OfflineTime;
-    int ClientConnectPort;
-    enum states
-    {
-        NULLs = 0,
-        Online = 1,
-        Offline = 2,
-        Use = 3
-    };
-    states state;
-    bool operator==(const ClientSocketFlagStruct &e)
-    {
-        return (this->ClientLanIp == e.ClientLanIp && this->ClientWanIp == e.ClientWanIp);
-    }
-};
-class filter
-{
-private:
-    bool notMatching;
-    struct rule
-    {
-
-        string ruleData;
-        int ruleOperatorType; //!= == > < >= <=
-                              // 1  2 3 4 5  6
-        rule(string _ruleData, int _ruleOperatorType)
-        {
-            ruleData = _ruleData;
-            ruleOperatorType = _ruleOperatorType;
-        }
-    };
-    vector<rule> wanIpRule, lanIpRule, portRule;
-    map<string, int> StringToIntForruleOperator =
-        {
-            {"!=", 1},
-            {"==", 2},
-            {">", 3},
-            {"<", 4},
-            {">=", 5},
-            {"<=", 6}};
-    bool GetnotMatchingState()
-    {
-        return this->notMatching;
-    }
-
-public:
-    enum ruleDataType
-    {
-        wanip = 1,
-        lanip = 2,
-        port = 3,
-        all = 4
-    };
-    const bool matching(string wanIp, string lanIp, string port)
-    {
-        if (notMatching)
-        {
-            return true;
-        }
-        bool wanIpMatch = false;
-        bool lanIpMatch = false;
-        bool portMatch = false;
-
-        if ((wanIpRule.size() == 0 && lanIpRule.size() == 0 && portRule.size() == 0)
-
-            || (wanIp.empty() && lanIp.empty() && port.empty()))
-        {
-            return false;
-        }
-        // wanIp matching
-        if (wanIpRule.size() > 0 && !wanIp.empty())
-            for (int i = 1; i <= wanIpRule.size(); i++)
-            {
-                if (wanIp.find(wanIpRule[i].ruleData) != string::npos)
-                {
-                    if (wanIpRule[i].ruleOperatorType == 2)
-                    {
-                        wanIpMatch = true;
-                        break;
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-            }
-        else if (wanIpRule.size() > 0 && wanIp.empty())
-            return false;
-        else
-            wanIpMatch = true;
-
-        // lanIp matching
-        if (lanIpRule.size() > 0 && !lanIp.empty())
-            for (int i = 1; i <= lanIpRule.size(); i++)
-            {
-                if (lanIp.find(lanIpRule[i - 1].ruleData) != string::npos)
-                {
-                    if (lanIpRule[i].ruleOperatorType == 2)
-                    {
-                        lanIpMatch = true;
-                        break;
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-            }
-        else if (lanIpRule.size() > 0 && lanIp.empty())
-            return false;
-        else
-            lanIpMatch = true;
-
-        // port matching
-        if (portRule.size() > 0 && !portRule.empty())
-            for (int i = 1; i <= portRule.size(); i++)
-            {
-                int iPort = stoi(port);
-                int iPortRule = stoi(portRule[i - 1].ruleData);
-                switch (portRule[i - 1].ruleOperatorType)
-                {
-                case 1: //!=
-                    if (port == portRule[i - 1].ruleData)
-                        return false;
-                    portMatch = true;
-                    break;
-                case 2: //==
-                    if (port == portRule[i - 1].ruleData)
-                        portMatch = true;
-                    else
-                        return false;
-                    break;
-                case 3: //>
-                    if (iPort > iPortRule)
-                        portMatch = true;
-                    else
-                        return false;
-                    break;
-                case 4: //<
-                    if (iPort < iPortRule)
-                        portMatch = true;
-                    else
-                        return false;
-                case 5: //>=
-                    if (iPort >= iPortRule)
-                        portMatch = true;
-                    else
-                        return false;
-                case 6: //<=
-                    if (iPort <= iPortRule)
-                        portMatch = true;
-                    else
-                        return false;
-                }
-            }
-        else if (portRule.size() > 0 && portRule.empty())
-            return false;
-        else
-            portMatch = true;
-        return wanIpMatch && lanIpMatch && portMatch;
-    }
-    bool addRule(ruleDataType ruleDataType, string ruleOperatorType, string ruleData)
-    {
-        vector<rule> *ruleVector;
-        switch (ruleDataType)
-        {
-        case wanip:
-            if (ruleOperatorType == "!=" || ruleOperatorType == "==")
-            {
-                ruleVector = &wanIpRule;
-                break;
-            }
-            else
-                return false;
-        case lanip:
-            if (ruleOperatorType == "!=" || ruleOperatorType == "==")
-            {
-                ruleVector = &lanIpRule;
-                break;
-            }
-            else
-                return false;
-        case port:
-            if (ruleOperatorType == "!=" || ruleOperatorType == "==" || ruleOperatorType == ">" || ruleOperatorType == "<" || ruleOperatorType == ">=" || ruleOperatorType == "<=")
-            {
-                ruleVector = &portRule;
-                break;
-            }
-            else
-                return false;
-        case all:
-            notMatching = true;
-            return true;
-        default:
-            return false;
-        }
-        ruleVector->push_back(rule{ruleData, StringToIntForruleOperator[ruleOperatorType]});
-        ruleVector = NULL;
-        return true;
-    }
-};
+#include "global.h"
+#include "saveData.h"
+#include "filter.h"
+int showForSend(string, filter, bool, ClientSocketFlagStruct::states);
 map<string, int> StringToInt =
     {
         {"connect", 1},
@@ -301,45 +10,85 @@ map<string, int> StringToInt =
         {"cmd", 4}
 
 };
-WSADATA wsaData;
-SOCKET ListenSocket;
-sockaddr_in service;
-queue<SOCKET> ClientSocketQueue, ServerSocketQueue;
-map<string, SEIDForSocketStruct> ServerSEIDMap, ClientSEIDMap;
-vector<ClientSocketFlagStruct> DataSaveArry;
-vector<ClientSocketFlagStruct> ClientMap;
-string password;
-bool dataIsChange = false;
-vector<thread> ServerRSThreadArry, ClientRSThreadArry;
-atomic<bool> ClientMapLock(false);
-atomic<bool> ServerQueueLock(false), ClientQueueLock(false);
-bool ischange = false;
-int PassDataInit = 0;
-BOOL WINAPI HandlerRoutine(DWORD dwCtrlType);
-int initServer(SOCKET &, sockaddr_in &, int);
-string StringTime(time_t);
-void HealthyCheckByServer(string);
-void HealthyCheckByClient(string);
-int showForSend(string, filter, bool, ClientSocketFlagStruct::states);
-void Connect(string, vector<string>, int);
-int delForId(int);
-void del(string, vector<string>, int);
-void show(string, vector<string>, int);
-void cmod(string, vector<string>, int);
-string createSEID(SOCKET, string);
-void joinClient(string, string, string, SOCKET, unsigned long long int, unsigned long long int);
-void ServerRS(SOCKET);
-void ClientRS(SOCKET);
-void ServerConnect();
-void ClientConnect();
-void saveData();
-void dataSave();
-void passData();
-void loadData();
-bool send_message(SOCKET sock, const std::string &message);
-bool receive_message(SOCKET sock, std::string &message);
-int main(int, char **);
+bool send_message(SOCKET sock, const std::string &message)
+{
+    std::ostringstream oss;
+    oss << message.size() << "\r\n\r\n\r\n\r\n\r\n"
+        << message; // 构建消息，包含长度和实际数据
+    std::string formatted_message = oss.str();
 
+    int total_sent = 0;
+    int message_length = formatted_message.size();
+    const char *data = formatted_message.c_str();
+
+    while (total_sent < message_length)
+    {
+        int bytes_sent = send(sock, data + total_sent, message_length - total_sent, 0);
+        if (bytes_sent == SOCKET_ERROR)
+        {
+            return false; // 发送失败
+        }
+        total_sent += bytes_sent;
+    }
+    return true; // 发送成功
+}
+bool receive_message(SOCKET sock, std::string &message)
+{
+    std::string length_str;
+    char buffer[16384] = {0};
+    int received;
+
+    // 首先读取长度部分，直到接收到 \r\n
+    while (true)
+    {
+        received = recv(sock, buffer, 1, 0); // 每次读取一个字节
+        if (received <= 0)
+        {
+            return false; // 连接断开或读取出错
+        }
+        if (buffer[0] == '\r')
+        {
+            // 继续读取\n
+            received = recv(sock, buffer, 1, 0);
+            if (received <= 0 || buffer[0] != '\n')
+            {
+                return false; // 格式错误
+            }
+
+            for (int i = 1; i <= 4; i++)
+            {
+                received = recv(sock, buffer, 1, 0);
+                if (received <= 0 || buffer[0] != '\r')
+                {
+                    return false; // 格式错误
+                }
+                received = recv(sock, buffer, 1, 0);
+                if (received <= 0 || buffer[0] != '\n')
+                {
+                    return false; // 格式错误
+                }
+            }
+            break; // 读取到 \r\n，退出循环
+        }
+        length_str += buffer[0];
+    }
+
+    int data_length = std::stoi(length_str); // 转换长度字符串为整数
+    message.resize(data_length);
+
+    int total_received = 0;
+    while (total_received < data_length)
+    {
+        received = recv(sock, &message[total_received], data_length - total_received, 0);
+        if (received <= 0)
+        {
+            return false; // 连接断开或读取出错
+        }
+        total_received += received;
+    }
+
+    return true; // 接收成功
+}
 BOOL WINAPI HandlerRoutine(DWORD dwCtrlType)
 {
     switch (dwCtrlType)
@@ -400,15 +149,31 @@ string StringTime(time_t t1)
 }
 void HealthyCheckByServer(const string SEID)
 {
-    cout << "12";
     int timeout = 1000; // 设置超时时间为 10 秒
     ServerSEIDMap[SEID].getServerHealthySocketLock();
-    setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_RCVTIMEO, (char *)timeout, sizeof(timeout));
-    setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_SNDTIMEO, (char *)timeout, sizeof(timeout));
+    try
+    {
+        if (SOCKET_ERROR == setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_RCVTIMEO, (char *)timeout, sizeof(int)))
+            cout << GetLastError() << endl;
+        if (SOCKET_ERROR == setsockopt(ServerSEIDMap[SEID].socketH, SOL_SOCKET, SO_SNDTIMEO, (char *)timeout, sizeof(int)))
+            cout << GetLastError() << endl;
+    }
+    catch (std::runtime_error &e)
+    {
+        cout << e.what() << endl;
+    }
+    catch (std::exception &e)
+    {
+        cout << e.what() << endl;
+    }
+    catch (...)
+    {
+        cout << "unknown error" << endl;
+    }
     ServerSEIDMap[SEID].releaseServerHealthySocketLock();
     while (1)
     {
-        srand(time(NULL));
+        srand(time(NULL) + rand());
         string sendMsg = to_string(rand() % 1000000000);
         string buf;
         ServerSEIDMap[SEID].getServerHealthySocketLock();
@@ -509,7 +274,6 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
         showForSend(seid, temp, true, ClientSocketFlagStruct::Online);
         ServerSEIDMap[seid].getServerSocketLock();
         int state = receive_message(s, recvBuf);
-        cout << recvBuf << endl;
         ServerSEIDMap[seid].releaseServerSocketLock();
         if (state == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
         {
@@ -521,12 +285,13 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
             {
                 break;
             }
-            else if (strcmp(recvBuf.c_str(), "\r\nnext\r\n"))
+            else if (strcmp(recvBuf.c_str(), "\r\nnext\r\n") == 0)
             {
                 continue;
             }
             int setClientId = atoi(recvBuf.c_str());
-            SOCKET ClientSocket = INVALID_SOCKET;
+            cout << "setClientId:" << setClientId << endl;
+            int ClientIndex = -1;
             for (int i = 0; i < ClientMap.size(); i++)
             {
                 if (ClientMap[i].state == ClientSocketFlagStruct::Online)
@@ -535,20 +300,32 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
                     if (setClientId == 0)
                     {
                         ClientMap[i].state = ClientSocketFlagStruct::Use;
-                        ClientSocket = ClientMap[i].ClientSocket;
+                        ClientIndex = i;
                         break;
                     }
                 }
             }
 
-            if (ClientSocket != INVALID_SOCKET)
+            if (ClientIndex != -1)
             {
+                string buf, buf2, temp;
                 ServerSEIDMap[seid].getServerSocketLock();
+                ClientSEIDMap[ClientMap[ClientIndex].SEID].getServerSocketLock();
                 send_message(s, "\r\n\r\nsec\r\n\r\n");
+                send_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, "\r\nstart\r\n");
+                receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, buf2);
+                send_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, "\r\n");
+                receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, temp);
+                buf2 += temp;
+                send_message(s, buf2);
+                // receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, temp);
                 ServerSEIDMap[seid].releaseServerSocketLock();
+                ClientSEIDMap[ClientMap[ClientIndex].SEID].releaseServerSocketLock();
                 while (1)
                 {
-                    string buf;
+                    buf.clear();
+                    buf2.clear();
+
                     ServerSEIDMap[seid].getServerSocketLock();
                     int state = receive_message(s, buf);
                     ServerSEIDMap[seid].releaseServerSocketLock();
@@ -558,18 +335,28 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
                     }
                     else if (state > 0)
                     {
+#ifdef _DEBUG
+                        cout << "recv:" << buf << endl;
+#endif
+                        ClientSEIDMap[ClientMap[ClientIndex].SEID].getServerSocketLock();
                         if (strcmp(buf.c_str(), "\r\nfexit\r\n") == 0)
                         {
-                            send_message(ClientSocket, "exit\r\n");
+                            send_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, "exit\r\n");
+                            receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, buf2);
+                            ClientSEIDMap[ClientMap[ClientIndex].SEID].releaseServerSocketLock();
+                            ClientMap[ClientIndex].state = ClientSocketFlagStruct::Online;
                             break;
                         }
                         else
                         {
-                            send_message(ClientSocket, buf);
+                            send_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, buf.c_str());
+                            receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, buf2);
+                            send_message(s, buf2);
                         }
+                        ClientSEIDMap[ClientMap[ClientIndex].SEID].releaseServerSocketLock();
                     }
                 }
-                break;
+                // break;
             }
             else
             {
@@ -584,23 +371,27 @@ int delForId(int ClientId)
 {
     while (ClientMapLock.exchange(true, std::memory_order_acquire))
         ; // 加锁
-    SOCKET ClientSocket = ClientMap[ClientId - 1].ClientSocket;
-    ClientMapLock.exchange(false, std::memory_order_release); // 解锁
+    SOCKET &ClientSocket = ClientSEIDMap[ClientMap[ClientId - 1].SEID].ServerSocket;
+
     if (ClientSocket != INVALID_SOCKET && ClientMap[ClientId - 1].state != ClientSocketFlagStruct::Use)
     {
         if (send_message(ClientSocket, "del") != SOCKET_ERROR)
         {
+            ClientMapLock.exchange(false, std::memory_order_release); // 解锁
             return 0;
         }
         else
         {
+            ClientMapLock.exchange(false, std::memory_order_release); // 解锁
             return 1;
         }
     }
     else if (ClientSocket != INVALID_SOCKET && ClientMap[ClientId - 1].state == ClientSocketFlagStruct::Use)
     {
+        ClientMapLock.exchange(false, std::memory_order_release); // 解锁
         return 2;
     }
+    ClientMapLock.exchange(false, std::memory_order_release); // 解锁
     return -1;
 }
 void del(string seid, vector<string> cmods, int cmodsNum)
@@ -654,7 +445,6 @@ void del(string seid, vector<string> cmods, int cmodsNum)
 void show(string seid, vector<string> cmods, int cmodsNum)
 {
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
-    cout << "SHOW";
     string recvBuf;
     while (1)
     {
@@ -680,9 +470,7 @@ void show(string seid, vector<string> cmods, int cmodsNum)
 void cmod(string seid, vector<string> cmods, int cmodsNum)
 {
     //[del,cmd,show][all,]
-    cout << "1321222q2312";
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
-    cout << "1321222q2312\n";
     map<string, int> StringToIntInComd = {
         {"run", 1},
         {"show", 2},
@@ -855,7 +643,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             if (f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)) && ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
             {
                 sectClient++;
-                send_message(ClientMap[i - 1].ClientSocket, sendBuf); // 发送指令至Client
+                send_message(ClientSEIDMap[ClientMap[i - 1].SEID].ServerSocket, sendBuf); // 发送指令至Client
             }
         }
         ClientMapLock.exchange(false, std::memory_order_release); // 解锁
@@ -877,7 +665,6 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
         ServerSEIDMap[seid].releaseOtherValueLock();
         ServerSEIDMap[seid].getServerSocketLock();
         send_message(s, "\r\nsee\r\n");
-        cout << "show";
         ServerSEIDMap[seid].releaseServerSocketLock();
         for (int i = 2; i <= cmodsNum && (cmodsNum - i) >= 2; i += 3)
         {
@@ -940,24 +727,24 @@ string createSEID(SOCKET sock, string something = NULL)
     m.init();
     return m.encode(StringTime(time(NULL)) + to_string(sock));
 }
-void joinClient(string ClientWanIp, string ClientLanIp, string ClientPort, SOCKET ClientSocket, unsigned long long int OnlineTime, unsigned long long int OfflineTime)
+void joinClient(string ClientWanIp, string ClientLanIp, string ClientPort, unsigned long long int OnlineTime, unsigned long long int OfflineTime, string SEID)
 {
     while (ClientMapLock.exchange(true, std::memory_order_acquire))
         ; // 加锁
     ClientSocketFlagStruct temp;
-    temp.ClientSocket = ClientSocket;
     temp.ClientWanIp = ClientWanIp;
     temp.ClientLanIp = ClientLanIp;
     temp.ClientConnectPort = atoi(ClientPort.c_str());
     temp.OnlineTime = OnlineTime;
     temp.OfflineTime = OfflineTime;
     temp.state = ClientSocketFlagStruct::states::Online;
+    temp.SEID = SEID;
     vector<ClientSocketFlagStruct>::iterator itr = find(ClientMap.begin(), ClientMap.end(), temp);
     if (itr != ClientMap.end())
     {
         while (ClientMap[distance(ClientMap.begin(), itr)].state == ClientSocketFlagStruct::states::Use)
             ;
-        closesocket(ClientMap[distance(ClientMap.begin(), itr)].ClientSocket);
+        closesocket(ClientSEIDMap[ClientMap[distance(ClientMap.begin(), itr)].SEID].ServerSocket);
         ClientMap[distance(ClientMap.begin(), itr)] = temp;
     }
     else
@@ -966,71 +753,6 @@ void joinClient(string ClientWanIp, string ClientLanIp, string ClientPort, SOCKE
     }
     ClientMapLock.exchange(false, std::memory_order_release); // 解锁
     return;
-}
-bool send_message(SOCKET sock, const std::string &message)
-{
-    std::ostringstream oss;
-    oss << message.size() << "\r\n"
-        << message; // 构建消息，包含长度和实际数据
-    std::string formatted_message = oss.str();
-
-    int total_sent = 0;
-    int message_length = formatted_message.size();
-    const char *data = formatted_message.c_str();
-
-    while (total_sent < message_length)
-    {
-        int bytes_sent = send(sock, data + total_sent, message_length - total_sent, 0);
-        if (bytes_sent == SOCKET_ERROR)
-        {
-            return false; // 发送失败
-        }
-        total_sent += bytes_sent;
-    }
-    return true; // 发送成功
-}
-bool receive_message(SOCKET sock, std::string &message)
-{
-    std::string length_str;
-    char buffer[1024];
-    int received;
-
-    // 首先读取长度部分，直到接收到 \r\n
-    while (true)
-    {
-        received = recv(sock, buffer, 1, 0); // 每次读取一个字节
-        if (received <= 0)
-        {
-            return false; // 连接断开或读取出错
-        }
-        if (buffer[0] == '\r')
-        {
-            // 继续读取\n
-            received = recv(sock, buffer, 1, 0);
-            if (received <= 0 || buffer[0] != '\n')
-            {
-                return false; // 格式错误
-            }
-            break; // 读取到 \r\n，退出循环
-        }
-        length_str += buffer[0];
-    }
-
-    int data_length = std::stoi(length_str); // 转换长度字符串为整数
-    message.resize(data_length);
-
-    int total_received = 0;
-    while (total_received < data_length)
-    {
-        received = recv(sock, &message[total_received], data_length - total_received, 0);
-        if (received <= 0)
-        {
-            return false; // 连接断开或读取出错
-        }
-        total_received += received;
-    }
-
-    return true; // 接收成功
 }
 void SetColor(unsigned short forecolor = 4, unsigned short backgroudcolor = 0)
 {
@@ -1050,20 +772,17 @@ void ServerRS(SOCKET s)
         string recvBuf;
         receive_message(s, recvBuf);
         loginYZM = m.encode(StringTime(time(NULL)) + lastloginYZM + password);
-        cout << loginYZM << endl
-             << recvBuf << endl;
         if (recvBuf == loginYZM)
         {
             loginTRUE = true;
             send_message(s, "true");
             break;
         }
-        send_message(s, "fail");
+        send_message(s, "error");
         lastloginYZM = loginYZM;
     }
     if (!loginTRUE)
         return;
-    cout << "loging OK\n";
     string SEID = createSEID(s, lastloginYZM + loginYZM);
     ServerSEIDMap[SEID].getServerSocketLock();
     send_message(s, SEID.c_str());
@@ -1097,20 +816,18 @@ void ServerRS(SOCKET s)
 
     while (1)
     {
-        cout << "Wait for command...\n";
-        cout << "start get value lock\n";
         ServerSEIDMap[SEID].getOtherValueLock();
         if (ServerSEIDMap[(string)SEID].isBack)
-            cout << "is back\n";
+        {
+            return;
+        }
         ServerSEIDMap[SEID].releaseOtherValueLock();
         string recvBuf;
-        cout << "start get lock\n";
         ServerSEIDMap[SEID].getServerSocketLock();
-        cout << "recv:" << recvBuf;
         int state = receive_message(s, recvBuf);
 
         ServerSEIDMap[SEID].releaseServerSocketLock();
-        if (state == SOCKET_ERROR)
+        if (state == SOCKET_ERROR || recvBuf.find("\r\nClose\r\n") != string::npos)
         {
             ServerSEIDMap[SEID].getServerSocketLock();
             ServerSEIDMap[SEID].getOtherValueLock();
@@ -1131,9 +848,6 @@ void ServerRS(SOCKET s)
                 tokenNum++;
                 cmods.push_back(token);
             }
-            cout << tokenNum << endl;
-            cout << cmods[0] << endl;
-            cout << StringToInt[cmods[0]];
             switch (StringToInt[cmods[0]])
             {
             case 1:
@@ -1156,21 +870,29 @@ void ServerRS(SOCKET s)
 }
 void ClientRS(SOCKET s)
 {
-    cout << "ok\n";
     string recvBuf;
     receive_message(s, recvBuf);
     istringstream iss((string)recvBuf);
     string ClientWanIp, ClientLanIp, ClientPort, ClientState;
     iss >> ClientWanIp >> ClientLanIp >> ClientPort;
-    joinClient(ClientWanIp, ClientLanIp, ClientPort, s, time(NULL), 0);
     string SEID = createSEID(s, ClientLanIp + ClientWanIp);
+    cout << "Client SEID:" << SEID << endl;
+    ClientSEIDMap[SEID].getOtherValueLock();
+    ClientSEIDMap[SEID].ServerSocket = s;
     ClientSEIDMap[SEID].isSEIDExit = true;
+    ClientSEIDMap[SEID].releaseOtherValueLock();
+    joinClient(ClientWanIp, ClientLanIp, ClientPort, time(NULL), 0, SEID);
     send_message(s, SEID);
-    cout << "ok\n";
-    while (!ClientSEIDMap[(string)SEID].isSocketExit)
-        ;
-    cout << "ok\n";
-    thread HealthyCheckThread = thread(HealthyCheckByClient, SEID);
+    while (true)
+    {
+        ClientSEIDMap[SEID].getOtherValueLock();
+        if (ClientSEIDMap[SEID].isSocketExit)
+        {
+            ClientSEIDMap[SEID].releaseOtherValueLock();
+            break;
+        }
+        ClientSEIDMap[SEID].releaseOtherValueLock();
+    }
     while (1)
     {
         if (ServerSEIDMap[(string)SEID].isBack)
@@ -1211,109 +933,6 @@ void ClientConnect()
         ClientQueueLock.exchange(false, std::memory_order_release);
     }
 }
-void saveData()
-{
-    ofstream outss;
-    outss.open("clientData.txt", ios::out);
-    for (int i = 1; i <= DataSaveArry.size(); i++)
-    {
-        outss << DataSaveArry[i - 1].ClientWanIp
-              << " " << DataSaveArry[i - 1].ClientLanIp
-              << " " << DataSaveArry[i - 1].ClientConnectPort
-              << " " << to_string(DataSaveArry[i - 1].OnlineTime)
-              << " " << to_string(DataSaveArry[i - 1].OfflineTime)
-              << endl;
-    }
-    outss.close();
-}
-void dataSave()
-{
-    while (1)
-    {
-        if (dataIsChange)
-        {
-            saveData();
-        }
-        Sleep(1000);
-    }
-}
-void passData()
-{
-
-    while (1)
-    {
-        if (!PassDataInit)
-        {
-            while (ClientMapLock.exchange(true, std::memory_order_acquire))
-                ;
-            for (int i = 1; i <= ClientMap.size(); i++)
-            {
-                if (ClientMap[i - 1].state != ClientSocketFlagStruct::states::Use && ClientMap[i - 1].Offline != 0 && (ClientMap[i - 1].Offline - ClientMap[i - 1].Online) >= 3600)
-                {
-                    delForId(i);
-                }
-                else
-                    DataSaveArry.push_back(ClientMap[i - 1]);
-            }
-            ClientMapLock.exchange(false, std::memory_order_release);
-            Sleep(1000);
-            PassDataInit = true;
-            continue;
-        }
-        while (ClientMapLock.exchange(true, std::memory_order_acquire))
-            ;
-        for (int i = 1; i <= ClientMap.size(); i++)
-        {
-            if (ClientMap[i - 1].state != ClientSocketFlagStruct::states::Use && ClientMap[i - 1].Offline != 0 && (ClientMap[i - 1].Offline - ClientMap[i - 1].Online) >= 3600)
-            {
-                delForId(i);
-            }
-            else
-            {
-                vector<ClientSocketFlagStruct>::iterator itr = find(DataSaveArry.begin(), DataSaveArry.end(), ClientMap[i - 1]);
-                if (itr != DataSaveArry.end())
-                {
-                    DataSaveArry[distance(DataSaveArry.begin(), itr)] = ClientMap[i - 1];
-                }
-            }
-        }
-        ClientMapLock.exchange(false, std::memory_order_release);
-    }
-}
-void loadData()
-{
-    ifstream inss, inPassword;
-    inPassword.open("password.data", ios::in);
-    if (!inPassword)
-    {
-        ofstream out;
-        out.open("password.data", ios::out);
-        out.close();
-        inPassword.close();
-        exit(0);
-    }
-    else
-    {
-        inPassword >> password;
-        cout << "Load Password:" << password << endl;
-    }
-    inPassword.close();
-    inss.open("clientData.data", ios::in);
-    if (!inss)
-    {
-        ofstream out;
-        out.open("clientData.data", ios::out);
-        out.close();
-        inss.close();
-        return;
-    }
-    string wanip, lanip, port, OnlineTime, OfflineTime;
-    while (inss >> wanip >> lanip >> port >> OnlineTime >> OfflineTime)
-    {
-        joinClient(wanip, lanip, port, NULL, stoi(OnlineTime), stoi(OfflineTime));
-    }
-    inss.close();
-}
 int main(int argc, char **argv)
 {
     system("chcp 65001>nul");
@@ -1321,7 +940,7 @@ int main(int argc, char **argv)
     loadData();
     cout << "loadData OK\n";
     cout << "password:" << password << endl;
-    initServer(ListenSocket, service, 2060);
+    initServer(ListenSocket, service, 6020);
 
     thread ClientConnectThread = thread(ClientConnect);
     thread ServerConnectThread = thread(ServerConnect);
@@ -1340,16 +959,16 @@ int main(int argc, char **argv)
             receive_message(aptSocket, buf);
             if (strcmp(buf.c_str(), "Client") == 0)
             {
+
                 send_message(aptSocket, "Recv");
                 while (ClientQueueLock.exchange(true, std::memory_order_acquire))
                     ;
                 ClientSocketQueue.push(aptSocket);
                 ClientQueueLock.exchange(false, std::memory_order_release);
-                // aptSocket = INVALID_SOCKET;
+                cout << "Client Connect\n"; // aptSocket = INVALID_SOCKET;
             }
             else if (strcmp(buf.c_str(), "Server") == 0)
             {
-                cout << "One New\n";
                 send_message(aptSocket, "Recv");
                 while (ServerQueueLock.exchange(true, std::memory_order_acquire))
                     ;
@@ -1368,10 +987,14 @@ int main(int argc, char **argv)
             }
             else if (ClientSEIDMap[buf].isSEIDExit)
             {
-
+                ClientSEIDMap[buf].getServerHealthySocketLock();
+                ClientSEIDMap[buf].getOtherValueLock();
                 ClientSEIDMap[buf].socketH = aptSocket;
                 ClientSEIDMap[buf].isSocketExit = true;
+                ClientSEIDMap[buf].releaseOtherValueLock();
+                ClientSEIDMap[buf].releaseServerHealthySocketLock();
             }
+            cout << buf << endl;
         }
     }
     return 0;

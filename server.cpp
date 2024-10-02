@@ -54,7 +54,7 @@ void SetColor(unsigned short forecolor = 4, unsigned short backgroudcolor = 0)
 bool send_message(SOCKET sock, const std::string &message)
 {
     std::ostringstream oss;
-    oss << message.size() << "\r\n"
+    oss << message.size() << "\r\n\r\n\r\n\r\n\r\n"
         << message; // 构建消息，包含长度和实际数据
     std::string formatted_message = oss.str();
 
@@ -76,7 +76,7 @@ bool send_message(SOCKET sock, const std::string &message)
 bool receive_message(SOCKET sock, std::string &message)
 {
     std::string length_str;
-    char buffer[1024];
+    char buffer[16384] = {0};
     int received;
 
     // 首先读取长度部分，直到接收到 \r\n
@@ -95,12 +95,27 @@ bool receive_message(SOCKET sock, std::string &message)
             {
                 return false; // 格式错误
             }
+
+            for (int i = 1; i <= 4; i++)
+            {
+                received = recv(sock, buffer, 1, 0);
+                if (received <= 0 || buffer[0] != '\r')
+                {
+                    return false; // 格式错误
+                }
+                received = recv(sock, buffer, 1, 0);
+                if (received <= 0 || buffer[0] != '\n')
+                {
+                    return false; // 格式错误
+                }
+            }
             break; // 读取到 \r\n，退出循环
         }
         length_str += buffer[0];
     }
 
     int data_length = std::stoi(length_str); // 转换长度字符串为整数
+    // cout << "data_length:" << data_length << endl;
     message.resize(data_length);
 
     int total_received = 0;
@@ -116,7 +131,50 @@ bool receive_message(SOCKET sock, std::string &message)
 
     return true; // 接收成功
 }
+int sendClientList(SOCKET s)
+{
+    int clientNum = 0;
+    cout << "__________Clients List__________" << endl;
+    cout << "WanIp\tLanIP\tClient Connect Port\tClient Satte\n";
+    do
+    {
+        string recvBuf;
+        receive_message(sockC, recvBuf);
+        if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
+        {
 
+            break;
+        }
+        clientNum++;
+        string srecv = recvBuf;
+        istringstream iss(srecv);
+        string clientWanIp, clientLanIp, clientPort, clientState;
+        cout << clientNum;
+        iss >> clientWanIp >> clientLanIp >> clientPort >> clientState;
+        switch (stoi(clientState))
+        {
+        case 0:
+            cout << "\t" << clientWanIp << "\t" << clientLanIp << "\t" << clientPort << "\t" << "UnKnown" << endl;
+            break;
+        case 1:
+            cout << "\t" << clientWanIp << "\t" << clientLanIp << "\t" << clientPort << "\t" << "Online" << endl;
+            break;
+        case 2:
+            cout << "\t" << clientWanIp << "\t" << clientLanIp << "\t" << clientPort << "\t" << "Offline" << endl;
+            break;
+        case 3:
+            cout << "\t" << clientWanIp << "\t" << clientLanIp << "\t" << clientPort << "\t" << "Use" << endl;
+            break;
+        }
+    } while (1);
+    if (clientNum == 0)
+    {
+        cout << "No Clients\n";
+    }
+    cout << "__________Clients List__________" << endl;
+    cout << "Cin 0 to exit:";
+    return 0;
+}
 void coin(string couts, string &cins)
 {
     cout << couts;
@@ -231,7 +289,6 @@ int login(SOCKET s)
         receive_message(s, recvBuf);
         SEID = recvBuf;
         initClient(healthyBeat, healthyBeatAddr, serverIp, serverPort);
-        cout << "9-";
         if (connect(healthyBeat, (sockaddr *)&healthyBeatAddr, sizeof(healthyBeatAddr)) == SOCKET_ERROR)
         {
             return 0;
@@ -249,6 +306,7 @@ int login(SOCKET s)
 }
 void Connect()
 {
+    system("cls");
     send_message(sockC, "connect");
     string recvBuf;
     string srecv, cmds;
@@ -258,27 +316,8 @@ void Connect()
     {
         clientNum = 0;
         system("cls");
-        cout << "__________Clients List__________" << endl;
-        do
-        {
-            string recvBuf;
-            receive_message(sockC, recvBuf);
-            if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
-            {
+        sendClientList(sockC);
 
-                break;
-            }
-            clientNum++;
-            string srecv = recvBuf;
-            // srecv = srecv.substr(srecv.length() - 3);
-            cout << clientNum << " " << srecv << endl;
-        } while (1);
-        if (clientNum == 0)
-        {
-            cout << "No Clients\n";
-        }
-        cout << "__________Clients List__________" << endl;
-        cout << "Cin 0 to exit:";
         if (_kbhit())
         {
             cin >> kb_cin;
@@ -294,6 +333,9 @@ void Connect()
                 receive_message(sockC, recvBuf);
                 if (strcmp(recvBuf.c_str(), "\r\n\r\nsec\r\n\r\n") == 0)
                 {
+                    system("cls");
+                    receive_message(sockC, recvBuf);
+                    cout << recvBuf;
                     int qt = 1;
                     while (1)
                     {
@@ -311,7 +353,14 @@ void Connect()
                                 break;
                             }
                         }
-                        send_message(sockC, cmds.c_str());
+                        else if (strcmp(cmds.c_str(), "cls") == 0)
+                        {
+                            system("cls");
+                            continue;
+                        }
+                        send_message(sockC, (cmds + "\n"));
+                        receive_message(sockC, recvBuf);
+                        cout << recvBuf;
                     }
                 }
                 else
@@ -319,6 +368,10 @@ void Connect()
                     cout << "ERROR" << endl;
                     system("pause");
                 }
+            }
+            else
+            {
+                send_message(sockC, "\r\nnext\r\n");
             }
         }
         else
@@ -337,29 +390,8 @@ void del()
     int clientNum = 0;
     while (1)
     {
-        clientNum = 0;
         system("cls");
-        cout << "__________Clients List__________" << endl;
-        do
-        {
-            string recvBuf;
-            receive_message(sockC, recvBuf);
-            if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
-            {
-
-                break;
-            }
-            clientNum++;
-            string srecv = recvBuf;
-            // srecv = srecv.substr(srecv.length() - 3);
-            cout << clientNum << " " << srecv << endl;
-        } while (1);
-        if (clientNum == 0)
-        {
-            cout << "No Clients\n";
-        }
-        cout << "__________Clients List__________" << endl;
-        cout << "Cin 0 to exit:";
+        sendClientList(sockC);
         if (_kbhit())
         {
             cin >> kb_cin;
@@ -403,27 +435,7 @@ void show()
     {
         clientNum = 0;
         system("cls");
-        cout << "__________Clients List__________" << endl;
-        do
-        {
-            string recvBuf;
-            receive_message(sockC, recvBuf);
-            if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
-            {
-
-                break;
-            }
-            clientNum++;
-            string srecv = recvBuf;
-            // srecv = srecv.substr(srecv.length() - 3);
-            cout << clientNum << " " << srecv << endl;
-        } while (1);
-        if (clientNum == 0)
-        {
-            cout << "No Clients\n";
-        }
-        cout << "__________Clients List__________" << endl;
-        cout << "Cin 0 to exit:";
+        sendClientList(sockC);
         if (_kbhit())
         {
             getch();
@@ -459,33 +471,7 @@ void cmd()
         receive_message(sockC, recvBuf);
         if (strcmp(recvBuf.c_str(), "\r\nsee\r\n") == 0)
         {
-            int clientNum = 0;
-            cout << "__________Clients List__________" << endl;
-            do
-            {
-                try
-                {
-                    receive_message(sockC, recvBuf);
-                }
-                catch (const std::exception &e)
-                {
-                    std::cerr << e.what() << '\n';
-                }
-                if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
-                {
-
-                    break;
-                }
-                clientNum++;
-                string srecv = recvBuf;
-                // srecv = srecv.substr(srecv.length() - 3);
-                cout << clientNum << " " << srecv << endl;
-            } while (1);
-            if (clientNum == 0)
-            {
-                cout << "No Clients\n";
-            }
-            cout << "__________Clients List__________" << endl;
+            sendClientList(sockC);
         }
         recvBuf.clear();
         receive_message(sockC, recvBuf);
@@ -558,6 +544,7 @@ void WhenClose()
     }
     closeP = true;
     send_message(healthyBeat, "\r\nClose\r\n");
+    send_message(sockC, "\r\nClose\r\n");
     closesocket(healthyBeat);
     closesocket(sockC);
     return;
