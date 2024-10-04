@@ -173,7 +173,7 @@ int sendClientList(SOCKET s)
     }
     cout << "__________Clients List__________" << endl;
     cout << "Cin 0 to exit:";
-    return 0;
+    return clientNum;
 }
 void coin(string couts, string &cins)
 {
@@ -311,13 +311,11 @@ void Connect()
     string recvBuf;
     string srecv, cmds;
     int kb_cin = -1;
-    int clientNum = 0;
+
     while (1)
     {
-        clientNum = 0;
         system("cls");
-        sendClientList(sockC);
-
+        int clientNum = sendClientList(sockC);
         if (_kbhit())
         {
             cin >> kb_cin;
