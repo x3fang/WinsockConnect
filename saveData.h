@@ -25,7 +25,7 @@ void dataSave()
         {
             saveData();
         }
-        Sleep(1000);
+        Sleep(5000);
     }
 }
 void passData()
@@ -36,7 +36,7 @@ void passData()
         if (!PassDataInit)
         {
             while (ClientMapLock.exchange(true, std::memory_order_acquire))
-                ;
+                ; // 加锁
             for (int i = 1; i <= ClientMap.size(); i++)
             {
                 if (ClientMap[i - 1].state != ClientSocketFlagStruct::states::Use && ClientMap[i - 1].Offline != 0 && (ClientMap[i - 1].Offline - ClientMap[i - 1].Online) >= 3600)
@@ -46,13 +46,13 @@ void passData()
                 else
                     DataSaveArry.push_back(ClientMap[i - 1]);
             }
-            ClientMapLock.exchange(false, std::memory_order_release);
             Sleep(1000);
             PassDataInit = true;
+            ClientMapLock.exchange(false, std::memory_order_release);
             continue;
         }
         while (ClientMapLock.exchange(true, std::memory_order_acquire))
-            ;
+            ; // 加锁
         for (int i = 1; i <= ClientMap.size(); i++)
         {
             if (ClientMap[i - 1].state != ClientSocketFlagStruct::states::Use && ClientMap[i - 1].Offline != 0 && (ClientMap[i - 1].Offline - ClientMap[i - 1].Online) >= 3600)
@@ -61,6 +61,7 @@ void passData()
             }
             else
             {
+                dataIsChange = true;
                 vector<ClientSocketFlagStruct>::iterator itr = find(DataSaveArry.begin(), DataSaveArry.end(), ClientMap[i - 1]);
                 if (itr != DataSaveArry.end())
                 {
@@ -69,6 +70,7 @@ void passData()
             }
         }
         ClientMapLock.exchange(false, std::memory_order_release);
+        Sleep(2500);
     }
 }
 void loadData()

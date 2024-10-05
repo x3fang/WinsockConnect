@@ -181,15 +181,6 @@ void setServerOrClientExit(SEIDForSocketStruct &s)
     }
     *funlog << "setServerOrClientExit End\n";
 }
-void healthyLock()
-{
-    while (HealthyLock.exchange(true, std::memory_order_acquire))
-        ; // 加锁)
-}
-void healthyUnlock()
-{
-    HealthyLock.exchange(false, std::memory_order_release); // 解锁
-}
 void HealthyCheack()
 {
     auto funlog = prlog.getFunLog("HealthyCheack");
@@ -233,7 +224,7 @@ void HealthyCheack()
 
                     continue;
                 }
-                if (buf != sendMsg || temp->isBack || !state || !state1)
+                if (strcmp(buf.c_str(), sendMsg.c_str()) != 0 || temp->isBack || !state || !state1)
                 {
                     *funlog << (HealthyQueue.front().isServer ? "Server" : "Client")
                             << " HealthyCheck Status:Error,error code:"
@@ -256,32 +247,30 @@ int showForSend(string seid, filter f, bool startIf = false, ClientSocketFlagStr
 {
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     int canShowClient = 0;
-    while (ClientMapLock.exchange(true, std::memory_order_acquire))
-        ; // 加锁
+    std::lock_guard<std::mutex> lock(ClientMapLock);
     for (int i = 1; i <= ClientMap.size(); i++)
     {
+
         if (ServerSEIDMap[seid].isBack)
         {
-            ClientMapLock.exchange(false, std::memory_order_release);
             return -1;
         }
         if (!startIf || ClientMap[i - 1].state == state || f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)))
         {
             canShowClient++;
             string sendBuf = ClientMap[i - 1].ClientWanIp + " " + ClientMap[i - 1].ClientLanIp + " " + to_string(ClientMap[i - 1].ClientConnectPort) + " " + to_string(ClientMap[i - 1].state);
+            std::lock_guard<std::mutex> lockSEID(ServerSEIDMap[seid].ServerSocketLock);
             if (!send_message(s, sendBuf))
             {
-                ClientMapLock.exchange(false, std::memory_order_release);
                 return -2;
             }
         }
     }
+    std::lock_guard<std::mutex> lockSEID(ServerSEIDMap[seid].ServerSocketLock);
     if (!send_message(s, "\r\n\r\nend\r\n\r\n"))
     {
-        ClientMapLock.exchange(false, std::memory_order_release);
         return -3;
     }
-    ClientMapLock.exchange(false, std::memory_order_release);
     return canShowClient;
 }
 void Connect(string seid, vector<string> cmods, int cmodsNum)
@@ -289,7 +278,6 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
     auto funlog = prlog.getFunLog("Connect SEID:" + seid);
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     string recvBuf;
-    std::lock_guard<std::mutex> lockSEID(ServerSEIDMap[seid].ServerSocketLock);
     while (1)
     {
         recvBuf.clear();
@@ -309,6 +297,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
         }
         bool state = false;
         {
+            std::lock_guard<std::mutex> lockSEID(ServerSEIDMap[seid].ServerSocketLock);
             state = receive_message(s, recvBuf);
         }
         if (!state)
@@ -352,6 +341,8 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
                     *funlog << "ClientIndex:" << ClientIndex << "\n";
                     *funlog << "ClientMap[ClientIndex].SEID:" << ClientMap[ClientIndex].SEID << "\n";
                     *funlog << "Server start connect Client\n";
+
+                    std::lock_guard<std::mutex> lockSEIDForServer(ServerSEIDMap[seid].ServerSocketLock);
                     std::lock_guard<std::mutex> lockSEIDForClient(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocketLock);
                     if (!send_message(s, "\r\n\r\nsec\r\n\r\n"))
                     {
@@ -389,6 +380,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
                     buf2.clear();
                     bool state = false;
                     {
+                        std::lock_guard<std::mutex> lockSEIDForServer(ServerSEIDMap[seid].ServerSocketLock);
                         state = receive_message(s, buf);
                     }
                     if (!state)
@@ -441,6 +433,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
         }
         else
         {
+            std::lock_guard<std::mutex> lockSEID(ServerSEIDMap[seid].ServerSocketLock);
             if (!send_message(s, "\r\n\r\nfail\r\n\r\n"))
             {
                 *funlog << "send to Server error "
@@ -455,8 +448,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
 }
 int delForId(int ClientId)
 {
-    while (ClientMapLock.exchange(true, std::memory_order_acquire))
-        ; // 加锁
+    std::lock_guard<std::mutex> lock(ClientMapLock);
     SOCKET &ClientSocket = ClientSEIDMap[ClientMap[ClientId - 1].SEID].ServerSocket;
     auto funlog = prlog.getFunLog("delForId SEID:" + ClientMap[ClientId - 1].SEID);
     if (ClientSocket != INVALID_SOCKET && ClientMap[ClientId - 1].state != ClientSocketFlagStruct::Use)
@@ -465,14 +457,12 @@ int delForId(int ClientId)
         {
             *funlog << "del ok\n";
             *funlog << "delForId End\n";
-            ClientMapLock.exchange(false, std::memory_order_release);
             return 0;
         }
         else
         {
             *funlog << "del error\n";
             *funlog << "delForId End\n";
-            ClientMapLock.exchange(false, std::memory_order_release);
             return 1;
         }
     }
@@ -480,12 +470,10 @@ int delForId(int ClientId)
     {
         *funlog << "Is Use,can`t del\n";
         *funlog << "delForId End\n";
-        ClientMapLock.exchange(false, std::memory_order_release);
         return 2;
     }
     *funlog << "unknown error\n";
     *funlog << "delForId End\n";
-    ClientMapLock.exchange(false, std::memory_order_release);
     return -1;
 }
 void del(string seid, vector<string> cmods, int cmodsNum)
@@ -493,7 +481,6 @@ void del(string seid, vector<string> cmods, int cmodsNum)
     auto funlog = prlog.getFunLog("del SEID:" + seid);
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     string recvBuf;
-    std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
     while (1)
     {
         {
@@ -512,6 +499,7 @@ void del(string seid, vector<string> cmods, int cmodsNum)
         }
         bool state = false;
         {
+            std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
             state = receive_message(s, recvBuf);
         }
         if (!state)
@@ -533,6 +521,7 @@ void del(string seid, vector<string> cmods, int cmodsNum)
             }
             int setClientId = atoi(recvBuf.c_str());
             int res = delForId(setClientId);
+            std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
             string sendMsg;
             if (res == 0)
             {
@@ -559,7 +548,6 @@ void del(string seid, vector<string> cmods, int cmodsNum)
 void show(string seid, vector<string> cmods, int cmodsNum)
 {
     auto funlog = prlog.getFunLog("show SEID:" + seid);
-    std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     string recvBuf;
     while (1)
@@ -580,6 +568,7 @@ void show(string seid, vector<string> cmods, int cmodsNum)
         }
         bool state = false;
         {
+            std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
             state = receive_message(s, recvBuf);
         }
         if (!state)
@@ -617,7 +606,6 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
         *funlog << "cmod End\n";
         return;
     }
-    std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
     if (strcmp(cmods[1].c_str(), "del") == 0 && cmodsNum >= 3)
     {
         {
@@ -630,6 +618,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             }
         }
         {
+            std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
             if (!send_message(s, "\r\ndel\r\n"))
             {
                 *funlog << "send to Server error "
@@ -649,6 +638,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
                     return;
                 }
             }
+            std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
             switch (StringToIntInComd[cmods[i]])
             {
             case 5:
@@ -695,6 +685,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             *funlog << "cmod End\n";
             return;
         }
+        std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
         if (!send_message(s, "\r\nok\r\n") ||
             !send_message(s, to_string(sectClient).c_str()) ||
             !send_message(s, to_string(ClientMap.size()).c_str()))
@@ -714,6 +705,8 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
                 return;
             }
         }
+
+        std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
         if (!send_message(s, "\r\ncmd\r\n"))
         {
             *funlog << "send to Server error "
@@ -800,30 +793,25 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
         }
         sendBuf = sendBuf.substr(1, sendBuf.length() - 2); // 去掉头尾的 ' " '
         sendBuf += "\r\nexit\r\n";
+        std::lock_guard<std::mutex> lockForClientMapLock(ClientMapLock);
+        for (int i = 1; i <= ClientMap.size(); i++)
         {
-            while (ClientMapLock.exchange(true, std::memory_order_acquire))
-                ; // 加锁
-            for (int i = 1; i <= ClientMap.size(); i++)
+            if (f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)) && ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
             {
-                if (f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)) && ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
+                *funlog << "Server cmd match one\n";
+                sectClient++;
+                if (!send_message(ClientSEIDMap[ClientMap[i - 1].SEID].ServerSocket, sendBuf)) // 发送指令至Client
                 {
-                    *funlog << "Server cmd match one\n";
-                    sectClient++;
-                    if (!send_message(ClientSEIDMap[ClientMap[i - 1].SEID].ServerSocket, sendBuf)) // 发送指令至Client
+                    *funlog << "send to Client error "
+                            << "error code:" << WSAGetLastError() << "\n";
+                    if (!send_message(s, "\r\ncmd error\r\n"))
                     {
-                        *funlog << "send to Client error "
+                        *funlog << "send to Server error "
                                 << "error code:" << WSAGetLastError() << "\n";
-                        if (!send_message(s, "\r\ncmd error\r\n"))
-                        {
-                            *funlog << "send to Server error "
-                                    << "error code:" << WSAGetLastError() << "\n";
-                            ClientMapLock.exchange(false, std::memory_order_release);
-                            return;
-                        }
+                        return;
                     }
                 }
             }
-            ClientMapLock.exchange(false, std::memory_order_release);
         }
         {
             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
@@ -834,6 +822,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
                 return;
             }
         }
+        std::lock_guard<std::mutex> lockForServerSEIDMapLock_ServerSocketLock(ServerSEIDMap[seid].ServerSocketLock);
         if (!send_message(s, "\r\nok\r\n") ||
             !send_message(s, to_string(sectClient).c_str()) ||
             !send_message(s, to_string(ClientMap.size()).c_str()))
@@ -853,6 +842,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
                 return;
             }
         }
+        std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
         if (!send_message(s, "\r\nsee\r\n"))
         {
             *funlog << "send to Server error "
@@ -921,8 +911,7 @@ string createSEID(SOCKET sock, string something = NULL)
 }
 void joinClient(string ClientWanIp, string ClientLanIp, string ClientPort, unsigned long long int OnlineTime, unsigned long long int OfflineTime, string SEID)
 {
-    while (ClientMapLock.exchange(true, std::memory_order_acquire))
-        ; // 加锁
+    std::lock_guard<std::mutex> lock(ClientMapLock);
     ClientSocketFlagStruct temp;
     temp.ClientWanIp = ClientWanIp;
     temp.ClientLanIp = ClientLanIp;
@@ -934,7 +923,7 @@ void joinClient(string ClientWanIp, string ClientLanIp, string ClientPort, unsig
     vector<ClientSocketFlagStruct>::iterator itr = find(ClientMap.begin(), ClientMap.end(), temp);
     if (itr != ClientMap.end())
     {
-        while (ClientMap[distance(ClientMap.begin(), itr)].state != ClientSocketFlagStruct::states::Online)
+        while (ClientMap[distance(ClientMap.begin(), itr)].state == ClientSocketFlagStruct::states::Use)
             ;
         closesocket(ClientSEIDMap[ClientMap[distance(ClientMap.begin(), itr)].SEID].ServerSocket);
         ClientMap[distance(ClientMap.begin(), itr)] = temp;
@@ -943,7 +932,6 @@ void joinClient(string ClientWanIp, string ClientLanIp, string ClientPort, unsig
     {
         ClientMap.push_back(temp);
     }
-    ClientMapLock.exchange(false, std::memory_order_release);
     return;
 }
 // void SetColor(unsigned short forecolor = 4, unsigned short backgroudcolor = 0)
@@ -1052,7 +1040,7 @@ void ServerRS(SOCKET s)
         else
         {
             *funlog << "Recv:\n---------------------------------------------\n"
-                    << string(recvBuf).substr(0, (recvBuf.length() > 60 ? recvBuf.length() / 2 : recvBuf.length() - 1)) << "\n"
+                    << string(recvBuf).substr(0, (recvBuf.length() > 60 ? 20 : recvBuf.length() / 2)) << "\n"
                     << "....\n---------------------------------------------\n";
             vector<string> cmods;
             string token;
@@ -1254,12 +1242,12 @@ int main(int argc, char **argv)
                 std::lock_guard<std::mutex> lockO(ServerSEIDMap[buf].OtherValueLock);
                 ServerSEIDMap[buf].socketH = aptSocket;
                 ServerSEIDMap[buf].isSocketExit = true;
+                ServerSEIDMap[buf].cv.notify_all();
 
                 prlog << "Server Healthy Connect\n";
                 char ServerIP[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &(aptsocketAddr.sin_addr), ServerIP, INET_ADDRSTRLEN);
                 prlog << "Server IP:" << ServerIP << "\n";
-                ServerSEIDMap[buf].cv.notify_all();
             }
             else if (ClientSEIDMap[buf].isSEIDExit)
             {

@@ -3,8 +3,16 @@
 #include <map>
 #include <fstream>
 #include <string>
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 #include <direct.h>
 #include <io.h>
+#endif
+#if __linux__
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <errno.h>
+#endif
 #include <vector>
 #include <ctime>
 #include <atomic>
@@ -128,7 +136,7 @@ namespace logNameSpace
             this->writeFlie->store(false, std::memory_order_release);
             return *this;
         }
-        Log &operator<<(const int &msg)
+        Log &operator<<(const int msg)
         {
             while (this->writeFlie->exchange(true, std::memory_order_acquire))
                 ;
@@ -174,10 +182,17 @@ namespace logNameSpace
                 if (c == '\\' || it == folder.end() - 1)
                 {
                     folder_builder.append(sub);
+
+                    // this folder not exist
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
                     if (0 != ::_access(folder_builder.c_str(), 0))
                     {
-                        // this folder not exist
-                        if (0 != ::_mkdir(folder_builder.c_str()))
+                        if (0 != ::mkdir(folder_builder.c_str()))
+#elif __linux__
+                    if (0 != ::access(folder_builder.c_str(), 0))
+                    {
+                        if (0 != ::mkdir(folder_builder.c_str(), 777))
+#endif
                         {
                             // create failed
                             return false;

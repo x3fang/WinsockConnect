@@ -73,7 +73,7 @@ bool send_message(SOCKET sock, const std::string &message)
     }
     return true; // 发送成功
 }
-bool receive_message(SOCKET sock, std::string &message)
+bool receive_message(SOCKET &sock, std::string &message)
 {
     std::string length_str;
     char buffer[16384] = {0};
@@ -115,7 +115,6 @@ bool receive_message(SOCKET sock, std::string &message)
     }
 
     int data_length = std::stoi(length_str); // 转换长度字符串为整数
-    // cout << "data_length:" << data_length << endl;
     message.resize(data_length);
 
     int total_received = 0;
@@ -131,7 +130,7 @@ bool receive_message(SOCKET sock, std::string &message)
 
     return true; // 接收成功
 }
-int sendClientList(SOCKET s)
+int sendClientList(SOCKET &s)
 {
     int clientNum = 0;
     cout << "__________Clients List__________" << endl;
@@ -142,7 +141,6 @@ int sendClientList(SOCKET s)
         receive_message(sockC, recvBuf);
         if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
         {
-
             break;
         }
         clientNum++;

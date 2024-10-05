@@ -1,11 +1,28 @@
 #ifndef GLOBAL_H_
 #define GLOBAL_H_
-#pragma comment(lib, "ws2_32.lib")
-// 设置连接器选项
-#pragma comment(linker, "/subsystem:\"windows\" /entry:\"mainCRTStartup\"")
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#pragma comment(lib, "ws2_32.lib")
+#pragma comment(linker, "/subsystem:\"windows\" /entry:\"mainCRTStartup\"")
+#endif
+#if __linux__
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <cstring>
+#define SOCKET int
+#define INVALID_SOCKET -1
+#define BOOL bool
+#define Sleep sleep
+#define SOCKET_ERROR -1
+#define closesocket close
+#define WSAGetLastError() errno
+#define SOCKADDR sockaddr
+#endif
 #include <stdio.h>
 #include <iostream>
 #include <random>
@@ -15,15 +32,16 @@
 #include <time.h>
 #include <atomic>
 #include <algorithm>
-#include <conio.h>
 #include <map>
 #include <queue>
 #include <mutex>
-#include "..\\MD5.h"
+#include <condition_variable>
+#include "MD5.h"
 #include "getCmd.h"
 #define _DEBUG
 using std::atomic;
 using std::cin;
+using std::condition_variable;
 using std::cout;
 using std::endl;
 using std::fstream;
@@ -67,9 +85,11 @@ typedef struct SEIDForSocketStruct
     bool isUse;
     string SEID;
     SOCKET ServerSocket;
+    mutex isSocketExitLock;
     mutex ServerSocketLock;
     mutex ServerHealthySocketLock;
     mutex OtherValueLock;
+    std::condition_variable cv;
     atomic<bool> serverSocketLock;
     atomic<bool> serverHealthySocketLock;
     atomic<bool> otherValueLock;
@@ -133,17 +153,10 @@ map<string, int> StringToIntInComd = {
     {"all", 8}};
 atomic<bool> HealthyLock(false);
 queue<HealthyDataStruct> HealthyQueue;
-void healthyLock()
-{
-    while (HealthyLock.exchange(true, std::memory_order_acquire))
-        ;
-}
-void healthyUnlock()
-{
-    HealthyLock.exchange(false, std::memory_order_release);
-}
 int ServerPort;
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 WSADATA wsaData;
+#endif
 SOCKET ListenSocket;
 sockaddr_in service;
 queue<SOCKET> ClientSocketQueue, ServerSocketQueue;
@@ -154,14 +167,14 @@ string password;
 bool dataIsChange = false;
 vector<thread> ServerRSThreadArry, ClientRSThreadArry;
 atomic<bool> ClientMapLock(false);
-atomic<bool> ServerQueueLock(false), ClientQueueLock(false);
+
+mutex ServerQueueLock, ClientQueueLock;
+condition_variable Queuecv;
+
 bool ischange = false;
 int PassDataInit = 0;
-BOOL WINAPI HandlerRoutine(DWORD dwCtrlType);
 int initServer(SOCKET &, sockaddr_in &, int);
 string StringTime(time_t);
-void HealthyCheckByServer(string);
-void HealthyCheckByClient(string);
 void Connect(string, vector<string>, int);
 int delForId(int);
 void del(string, vector<string>, int);
