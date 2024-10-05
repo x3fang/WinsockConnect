@@ -18,6 +18,7 @@
 #include <conio.h>
 #include <map>
 #include <queue>
+#include <mutex>
 #include "..\\MD5.h"
 #include "getCmd.h"
 #define _DEBUG
@@ -30,6 +31,7 @@ using std::ifstream;
 using std::ios;
 using std::istringstream;
 using std::map;
+using std::mutex;
 using std::ofstream;
 using std::queue;
 using std::string;
@@ -65,6 +67,9 @@ typedef struct SEIDForSocketStruct
     bool isUse;
     string SEID;
     SOCKET ServerSocket;
+    mutex ServerSocketLock;
+    mutex ServerHealthySocketLock;
+    mutex OtherValueLock;
     atomic<bool> serverSocketLock;
     atomic<bool> serverHealthySocketLock;
     atomic<bool> otherValueLock;

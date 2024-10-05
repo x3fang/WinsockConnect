@@ -222,8 +222,8 @@ string StringTime(time_t t1)
 void healthyCheck(SOCKET HealthyBeat)
 {
     int timeout = 10000; // 设置超时时间为 10 秒
-    setsockopt(HealthyBeat, SOL_SOCKET, SO_RCVTIMEO, (char *)timeout, sizeof(timeout));
-    setsockopt(HealthyBeat, SOL_SOCKET, SO_SNDTIMEO, (char *)timeout, sizeof(timeout));
+    setsockopt(HealthyBeat, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+    setsockopt(HealthyBeat, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
     while (1)
     {
         if (closeP)
