@@ -38,7 +38,7 @@
 #include <condition_variable>
 #include "MD5.h"
 #include "getCmd.h"
-#define _DEBUG
+// #define _DEBUG
 using std::atomic;
 using std::cin;
 using std::condition_variable;

@@ -65,14 +65,25 @@ namespace logNameSpace
             this->writeFlie = new std::atomic<bool>(false);
             this->logName = name;
             mustChangeFlie();
+            
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
             createDirectory("log");
+#endif
+#if __linux__
+            createDirectory("/"+logName+"-log");
+#endif
             this->logMaxSize = logMaxSize;
         }
         ~Log()
         {
             if (!msg.empty())
             {
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
                 std::ofstream logFilet("log\\" + logName + ".log", std::ios::out | std::ios::app);
+#endif
+#if __linux__
+                std::ofstream logFilet("/" + logName + "-log/" + logName + ".log", std::ios::out | std::ios::app);
+#endif
                 logFilet << getTime() << " " << msg << std::endl;
                 logFilet.close();
             }
@@ -90,7 +101,12 @@ namespace logNameSpace
             std::string temp = logName;
             for (int i = 0; true; i++)
             {
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
                 int flieSize = getFileSize1(("log\\" + temp + ".log").c_str());
+#endif
+#if __linux__
+                int flieSize = getFileSize1(("/"+logName+"-log/" + temp + ".log").c_str());
+#endif
                 if (flieSize >= logMaxSize)
                 {
                     if (i > 0)
@@ -108,7 +124,12 @@ namespace logNameSpace
             this->msg += msg;
             if (this->msg.find("\n") != std::string::npos)
             {
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
                 std::ofstream logFilet("log\\" + logName + ".log", std::ios::out | std::ios::app);
+#endif
+#if __linux__
+                std::ofstream logFilet("/" + logName + "-log/" + logName + ".log", std::ios::out | std::ios::app);
+#endif
                 while (this->msg.find("\n") != std::string::npos)
                 {
                     logFilet << getTime() << " " << this->msg.substr(0, this->msg.find("\n")) << std::endl;

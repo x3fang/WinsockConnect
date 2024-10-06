@@ -338,7 +338,11 @@ void Connect()
                         getline(cin, cmds);
                         if (strcmp(cmds.c_str(), "powershell") == 0 || strcmp(cmds.c_str(), "cmd") == 0)
                         {
+                            send_message(sockC, (cmds + "\n"));
+                            receive_message(sockC, recvBuf);
+                            cout << recvBuf;
                             qt++;
+                            continue;
                         }
                         else if (strcmp(cmds.c_str(), "exit") == 0)
                         {
@@ -352,7 +356,6 @@ void Connect()
                         else if (strcmp(cmds.c_str(), "cls") == 0)
                         {
                             system("cls");
-                            continue;
                         }
                         send_message(sockC, (cmds + "\n"));
                         receive_message(sockC, recvBuf);

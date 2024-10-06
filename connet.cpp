@@ -378,7 +378,7 @@ void LoadData()
 	}
 	else
 	{
-		ip = "127.0.0.1";
+		ip = "192.168.111.132";
 		serverPort = 6020;
 	}
 }
