@@ -1,9 +1,26 @@
 #include "global.h"
 #include "saveData.h"
 #include "filter.h"
-#include "log.h"
 logNameSpace::Log prlog;
 int showForSend(string, filter, bool, ClientSocketFlagStruct::states);
+void sendError(logNameSpace::funLog &funlog, string seid, string nextDo)
+{
+    funlog << "send error.SEID:"
+           << seid
+           << " error code:" << WSAGetLastError()
+           << " next do: " << nextDo
+           << lns::endl;
+    return;
+}
+void recvError(logNameSpace::funLog &funlog, string seid, string nextDo)
+{
+    funlog << "recv error.SEID:"
+           << seid
+           << " error code:" << WSAGetLastError()
+           << " next do: " << nextDo
+           << lns::endl;
+    return;
+}
 map<string, int> StringToInt =
     {
         {"connect", 1},
@@ -94,12 +111,13 @@ bool receive_message(SOCKET sock, std::string &message)
 int initServer(SOCKET &ListenSocket, sockaddr_in &sockAddr, int port)
 {
     auto funlog = prlog.getFunLog("initServer");
+    *funlog << "initServer Start" << lns::endl;
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
     int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (iResult != 0)
     {
-        *funlog << "WSAStartup() failed with error: " << iResult << "\n";
-        *funlog << "initServer End\n";
+        *funlog << "WSAStartup() failed with error: " << iResult << lns::endl;
+        *funlog << "initServer End" << lns::endl;
         return iResult;
     }
 #endif
@@ -108,8 +126,8 @@ int initServer(SOCKET &ListenSocket, sockaddr_in &sockAddr, int port)
     if (ListenSocket == INVALID_SOCKET)
     {
         int errorCode = WSAGetLastError();
-        *funlog << "socket() failed with error: " << errorCode << "\n";
-        *funlog << "initServer End\n";
+        *funlog << "socket() failed with error: " << errorCode << lns::endl;
+        *funlog << "initServer End" << lns::endl;
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
         WSACleanup();
 #endif
@@ -127,8 +145,8 @@ int initServer(SOCKET &ListenSocket, sockaddr_in &sockAddr, int port)
         WSACleanup();
 #endif
         int errorCode = WSAGetLastError();
-        *funlog << "bind() failed with error: " << errorCode << "\n";
-        *funlog << "initServer End\n";
+        *funlog << "bind() failed with error: " << errorCode << lns::endl;
+        *funlog << "initServer End" << lns::endl;
         return errorCode;
     }
     // 监听套接字
@@ -139,11 +157,11 @@ int initServer(SOCKET &ListenSocket, sockaddr_in &sockAddr, int port)
         WSACleanup();
 #endif
         int errorCode = WSAGetLastError();
-        *funlog << "listen() failed with error: " << errorCode << "\n";
-        *funlog << "initServer End\n";
+        *funlog << "listen() failed with error: " << errorCode << lns::endl;
+        *funlog << "initServer End" << lns::endl;
         return errorCode;
     }
-    *funlog << "initServer End\n";
+    *funlog << "initServer End" << lns::endl;
     return 0;
 }
 string StringTime(time_t t1)
@@ -154,32 +172,32 @@ string StringTime(time_t t1)
     struct tm *timinfo;
     timinfo = localtime(&t);
     strftime(tmp, sizeof(tmp), "%Y%m%d%H%M", timinfo);
-    *funlog << "String Time End\n";
+    *funlog << "String Time End" << lns::endl;
     return tmp;
 }
 void setServerOrClientExit(SEIDForSocketStruct &s)
 {
-    auto funlog = prlog.getFunLog("setServerOrClientExit SEID:" + s.SEID);
+    auto funlog = prlog.getFunLog("setServerOrClientExit");
     // 设置退出标志
     {
         std::lock_guard<std::mutex> lock(s.OtherValueLock);
         s.isBack = true;
         s.isSocketExit = false;
-        *funlog << "set status isBack\n";
+        *funlog << "set status isBack" << lns::endl;
     }
     // 关闭测试套接字
     {
         std::lock_guard<std::mutex> lock(s.ServerHealthySocketLock);
         closesocket(s.socketH);
-        *funlog << "close healthy cheacksocket\n";
+        *funlog << "close healthy cheacksocket" << lns::endl;
     }
     // 关闭连接套接字
     {
         std::lock_guard<std::mutex> lock(s.ServerSocketLock);
         closesocket(s.ServerSocket);
-        *funlog << "close ServerSocket\n";
+        *funlog << "close ServerSocket" << lns::endl;
     }
-    *funlog << "setServerOrClientExit End\n";
+    *funlog << "setServerOrClientExit End" << lns::endl;
 }
 void healthyLock()
 {
@@ -193,6 +211,7 @@ void healthyUnlock()
 void HealthyCheack()
 {
     auto funlog = prlog.getFunLog("HealthyCheack");
+    *funlog << "HealthyCheack Start" << lns::endl;
     while (1)
     {
         if (!HealthyQueue.empty())
@@ -206,12 +225,12 @@ void HealthyCheack()
 
                 if (HealthyQueue.front().isServer)
                 {
-                    *funlog << "start Server HealthyCheck,SEID:" << SEID << "\n";
+                    *funlog << "start Server HealthyCheck,SEID:" << SEID << lns::endl;
                     temp = &ServerSEIDMap[SEID];
                 }
                 else
                 {
-                    *funlog << "start Client HealthyCheck,SEID:" << SEID << "\n";
+                    *funlog << "start Client HealthyCheck,SEID:" << SEID << lns::endl;
                     temp = &ClientSEIDMap[SEID];
                 }
                 std::lock_guard<std::mutex> lock(temp->ServerHealthySocketLock);
@@ -219,18 +238,26 @@ void HealthyCheack()
                 srand(time(NULL) + rand());
                 string sendMsg = to_string(rand() % 1000000000);
                 string buf;
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
                 int timeout = 3000;
                 setsockopt(temp->socketH, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout, sizeof(timeout));
                 setsockopt(temp->socketH, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+#elif __linux__
+                socklen_t optlen = sizeof(struct timeval);
+                struct timeval tv;
+                tv.tv_sec = 3;
+                tv.tv_usec = 0;
+                setsockopt(temp->socketH, SOL_SOCKET, SO_SNDTIMEO, &tv, optlen);
+                setsockopt(temp->socketH, SOL_SOCKET, SO_RCVTIMEO, &tv, optlen);
+#endif
                 int state = send_message(temp->socketH, sendMsg);
                 int state1 = receive_message(temp->socketH, buf);
                 if (strcmp(buf.c_str(), "\r\nClose\r\n") == 0)
                 {
                     *funlog << (HealthyQueue.front().isServer ? "Server" : "Client")
-                            << " HealthyCheck Status:Close SEID:" << SEID << "\n";
+                            << " HealthyCheck Status:Close SEID:" << SEID << lns::endl;
                     HealthyQueue.pop();
                     setServerOrClientExit(*temp);
-
                     continue;
                 }
                 if (buf != sendMsg || temp->isBack || !state || !state1)
@@ -238,7 +265,7 @@ void HealthyCheack()
                     *funlog << (HealthyQueue.front().isServer ? "Server" : "Client")
                             << " HealthyCheck Status:Error,error code:"
                             << WSAGetLastError()
-                            << " SEID:" << SEID << "\n";
+                            << " SEID:" << SEID << lns::endl;
                     HealthyQueue.pop();
                     setServerOrClientExit(*temp);
                     continue;
@@ -251,6 +278,7 @@ void HealthyCheack()
             healthyUnlock();
         }
     }
+    *funlog << "HealthyCheack End" << lns::endl;
 }
 int showForSend(string seid, filter f, bool startIf = false, ClientSocketFlagStruct::states state = ClientSocketFlagStruct::NULLs)
 {
@@ -286,7 +314,7 @@ int showForSend(string seid, filter f, bool startIf = false, ClientSocketFlagStr
 }
 void Connect(string seid, vector<string> cmods, int cmodsNum)
 {
-    auto funlog = prlog.getFunLog("Connect SEID:" + seid);
+    auto funlog = prlog.getFunLog("Connect");
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     string recvBuf;
     std::lock_guard<std::mutex> lockSEID(ServerSEIDMap[seid].ServerSocketLock);
@@ -297,7 +325,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
             std::lock_guard<std::mutex> lockSEID(ServerSEIDMap[seid].OtherValueLock);
             if (ServerSEIDMap[seid].isBack)
             {
-                *funlog << "Server is exit\n";
+                *funlog << "Server is exit" << lns::endl;
                 break;
             }
         }
@@ -314,7 +342,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
         if (!state)
         {
             *funlog << "Server recv error "
-                    << "error code:" << WSAGetLastError() << "\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
             break;
         }
         else if (state > 0)
@@ -322,7 +350,7 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
             if (strcmp(recvBuf.c_str(), "\r\nexit\r\n") == 0)
             {
                 *funlog << "Server exit Connect "
-                        << "error code:" << WSAGetLastError() << "\n";
+                        << "error code:" << WSAGetLastError() << lns::endl;
                 break;
             }
             else if (strcmp(recvBuf.c_str(), "\r\nnext\r\n") == 0)
@@ -349,77 +377,71 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
             {
                 string buf, buf2, temp;
                 {
-                    *funlog << "ClientIndex:" << ClientIndex << "\n";
-                    *funlog << "ClientMap[ClientIndex].SEID:" << ClientMap[ClientIndex].SEID << "\n";
-                    *funlog << "Server start connect Client\n";
+                    *funlog << "ClientIndex:" << ClientIndex << lns::endl;
+                    *funlog << "ClientMap[ClientIndex].SEID:" << ClientMap[ClientIndex].SEID << lns::endl;
+                    *funlog << "Server start connect Client" << lns::endl;
                     std::lock_guard<std::mutex> lockSEIDForClient(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocketLock);
                     std::lock_guard<std::mutex> lockOtherValueForClient(ClientSEIDMap[ClientMap[ClientIndex].SEID].OtherValueLock);
                     if (!send_message(s, "\r\n\r\nsec\r\n\r\n"))
                     {
                         *funlog << "send to Server error "
-                                << "error code:" << WSAGetLastError() << "\n";
+                                << "error code:" << WSAGetLastError() << lns::endl;
                         ClientMap[ClientIndex].state = ClientSocketFlagStruct::Online;
                         break;
                     }
                     {
+                        bool failButNext = false;
                         if (!send_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, "\r\nstart\r\n"))
                         {
-                            *funlog << "send/recv error "
-                                    << "error code:" << WSAGetLastError() << "\n";
+                            sendError(*funlog, ClientMap[ClientIndex].SEID, "break.For Client");
                             ClientMap[ClientIndex].state = ClientSocketFlagStruct::Offline;
+                            if (!send_message(s, "\r\n\r\nfail\r\n\r\n"))
+                            {
+                                sendError(*funlog, seid, "break");
+                            }
                             break;
                         }
                         if (!receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, buf2))
                         {
-                            *funlog << "send/recv error "
-                                    << "error code:" << WSAGetLastError() << "\n";
-                            ClientMap[ClientIndex].state = ClientSocketFlagStruct::Offline;
-                            break;
+                            recvError(*funlog, ClientMap[ClientIndex].SEID, "next.For Client");
+                            failButNext = true;
                         }
                         if (!send_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, "\r\n"))
                         {
-                            *funlog << "send/recv error "
-                                    << "error code:" << WSAGetLastError() << "\n";
-                            ClientMap[ClientIndex].state = ClientSocketFlagStruct::Offline;
-                            break;
+                            sendError(*funlog, ClientMap[ClientIndex].SEID, "next.For Client");
+                            failButNext = true;
                         }
                         if (!receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, temp))
                         {
-                            *funlog << "send/recv error "
-                                    << "error code:" << WSAGetLastError() << "\n";
-                            ClientMap[ClientIndex].state = ClientSocketFlagStruct::Offline;
-                            break;
+                            recvError(*funlog, ClientMap[ClientIndex].SEID, "next.For Client");
+                            failButNext = true;
                         }
                         buf2 += temp;
-                        if (!send_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, "chcp 65001"))
+                        if (failButNext)
                         {
-                            *funlog << "send/recv error "
-                                    << "error code:" << WSAGetLastError() << "\n";
-                            ClientMap[ClientIndex].state = ClientSocketFlagStruct::Offline;
+                            if (!send_message(s, "\r\n\r\nfailn\r\n\r\n"))
+                            {
+                                sendError(*funlog, ClientMap[ClientIndex].SEID, "break.For Server");
+                                ClientMap[ClientIndex].state = ClientSocketFlagStruct::Online;
+                                send_message(s, "\r\n\r\nfail\r\n\r\n");
+                                break;
+                            }
+                        }
+                        if (!send_message(s, buf2))
+                        {
+                            sendError(*funlog, ClientMap[ClientIndex].SEID, "break.For Server");
+                            ClientMap[ClientIndex].state = ClientSocketFlagStruct::Online;
+                            send_message(s, "\r\n\r\nfail\r\n\r\n");
                             break;
                         }
-                        if (!receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, temp))
-                        {
-                            *funlog << "send/recv error "
-                                    << "error code:" << WSAGetLastError() << "\n";
-                            ClientMap[ClientIndex].state = ClientSocketFlagStruct::Offline;
-                            break;
-                        }
+                        *funlog << "Server connect init ok" << lns::endl;
                     }
-                    if (!send_message(s, buf2))
-                    {
-                        *funlog << "send to Server error "
-                                << "error code:" << WSAGetLastError() << "\n";
-                        ClientMap[ClientIndex].state = ClientSocketFlagStruct::Online;
-                        break;
-                    }
-                    *funlog << "Server connect init ok\n";
                 }
                 while (1)
                 {
                     if (ServerSEIDMap[seid].isBack)
                     {
-                        *funlog << "Server is exit\n";
+                        *funlog << "Server is exit" << lns::endl;
                         ClientMap[ClientIndex].state = ClientSocketFlagStruct::Online;
                         break;
                     }
@@ -431,15 +453,14 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
                     }
                     if (!state)
                     {
-                        *funlog << "Server recv error "
-                                << "error code:" << WSAGetLastError() << "\n";
+                        recvError(*funlog, ClientMap[ClientIndex].SEID, "break.For server");
                         ClientMap[ClientIndex].state = ClientSocketFlagStruct::Online;
                         break;
                     }
                     else if (state > 0)
                     {
 #ifdef _DEBUG
-                        *funlog << "recv:" << buf << "\n";
+                        *funlog << "recv:" << buf << lns::endl;
 #endif
                         std::lock_guard<std::mutex> lockSEIDForClient(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocketLock);
                         std::lock_guard<std::mutex> lockOtherValueForClient(ClientSEIDMap[ClientMap[ClientIndex].SEID].OtherValueLock);
@@ -448,36 +469,39 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
                             if (!send_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, "exit\r\n") ||
                                 !receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, buf2))
                             {
-                                *funlog << "send/recv error "
-                                        << "error code:" << WSAGetLastError() << "\n";
+                                sendError(*funlog, ClientMap[ClientIndex].SEID, "break.For Client");
+                                recvError(*funlog, ClientMap[ClientIndex].SEID, "break.For Client");
                                 ClientMap[ClientIndex].state = ClientSocketFlagStruct::Offline;
+                                send_message(s, "\r\n\r\nfail\r\n\r\n");
                                 break;
                             }
                             ClientMap[ClientIndex].state = ClientSocketFlagStruct::Online;
-                            *funlog << "Server exit connect\n";
+                            *funlog << "Server exit connect" << lns::endl;
                             break;
                         }
                         else
                         {
                             if (!send_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, buf.c_str()))
                             {
-                                *funlog << "send/recv error "
-                                        << "error code:" << WSAGetLastError() << "\n";
+                                sendError(*funlog, ClientMap[ClientIndex].SEID, "break.For Client");
                                 ClientMap[ClientIndex].state = ClientSocketFlagStruct::Offline;
+                                send_message(s, "\r\n\r\nfail\r\n\r\n");
                                 break;
                             }
                         }
-                        if (!receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, buf2) || !send_message(s, buf2))
+                        if (!receive_message(ClientSEIDMap[ClientMap[ClientIndex].SEID].ServerSocket, buf2) ||
+                            !send_message(s, buf2))
                         {
-                            *funlog << "send/recv error "
-                                    << "error code:" << WSAGetLastError() << "\n";
+                            recvError(*funlog, ClientMap[ClientIndex].SEID, "break.For Client");
+                            sendError(*funlog, ClientMap[ClientIndex].SEID, "break.For Server");
                             ClientMap[ClientIndex].state = ClientSocketFlagStruct::Offline;
+                            send_message(s, "\r\n\r\nfail\r\n\r\n");
                             break;
                         }
                     }
                     else
                     {
-                        *funlog << "Server unkonwn error\n";
+                        *funlog << "Server unkonwn error" << lns::endl;
                     }
                 }
             }
@@ -487,53 +511,53 @@ void Connect(string seid, vector<string> cmods, int cmodsNum)
             if (!send_message(s, "\r\n\r\nfail\r\n\r\n"))
             {
                 *funlog << "send to Server error "
-                        << "error code:" << WSAGetLastError() << "\n";
+                        << "error code:" << WSAGetLastError() << lns::endl;
                 break;
             }
-            *funlog << "Can`t find client\n";
+            *funlog << "Can`t find client" << lns::endl;
         }
     }
     // break;
-    *funlog << "Connect End\n";
+    *funlog << "Connect End" << lns::endl;
 }
 int delForId(int ClientId)
 {
     while (ClientMapLock.exchange(true, std::memory_order_acquire))
         ; // 加锁
     SOCKET &ClientSocket = ClientSEIDMap[ClientMap[ClientId - 1].SEID].ServerSocket;
-    auto funlog = prlog.getFunLog("delForId SEID:" + ClientMap[ClientId - 1].SEID);
+    auto funlog = prlog.getFunLog("delForId");
     if (ClientSocket != INVALID_SOCKET && ClientMap[ClientId - 1].state != ClientSocketFlagStruct::Use)
     {
         if (send_message(ClientSocket, "del"))
         {
-            *funlog << "del ok\n";
-            *funlog << "delForId End\n";
+            *funlog << "del ok" << lns::endl;
+            *funlog << "delForId End" << lns::endl;
             ClientMapLock.exchange(false, std::memory_order_release);
             return 0;
         }
         else
         {
-            *funlog << "del error\n";
-            *funlog << "delForId End\n";
+            *funlog << "del error" << lns::endl;
+            *funlog << "delForId End" << lns::endl;
             ClientMapLock.exchange(false, std::memory_order_release);
             return 1;
         }
     }
     else if (ClientSocket != INVALID_SOCKET && ClientMap[ClientId - 1].state == ClientSocketFlagStruct::Use)
     {
-        *funlog << "Is Use,can`t del\n";
-        *funlog << "delForId End\n";
+        *funlog << "Is Use,can`t del" << lns::endl;
+        *funlog << "delForId End" << lns::endl;
         ClientMapLock.exchange(false, std::memory_order_release);
         return 2;
     }
-    *funlog << "unknown error\n";
-    *funlog << "delForId End\n";
+    *funlog << "unknown error" << lns::endl;
+    *funlog << "delForId End" << lns::endl;
     ClientMapLock.exchange(false, std::memory_order_release);
     return -1;
 }
 void del(string seid, vector<string> cmods, int cmodsNum)
 {
-    auto funlog = prlog.getFunLog("del SEID:" + seid);
+    auto funlog = prlog.getFunLog("del");
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     string recvBuf;
     std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
@@ -543,14 +567,14 @@ void del(string seid, vector<string> cmods, int cmodsNum)
             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
             if (ServerSEIDMap[seid].isBack)
             {
-                *funlog << "Server is exit\n";
+                *funlog << "Server is exit" << lns::endl;
                 break;
             }
         }
         filter temp;
         if (showForSend(seid, temp) < 0)
         {
-            *funlog << "showForSend error\n";
+            *funlog << "showForSend error" << lns::endl;
             break;
         }
         bool state = false;
@@ -560,14 +584,14 @@ void del(string seid, vector<string> cmods, int cmodsNum)
         if (!state)
         {
             *funlog << "Server Socket error "
-                    << "error code:" << WSAGetLastError() << "\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
             break;
         }
         else if (state > 0)
         {
             if (strcmp(recvBuf.c_str(), "\r\nexit\r\n") == 0)
             {
-                *funlog << "Server exit del\n";
+                *funlog << "Server exit del" << lns::endl;
                 break;
             }
             else if (strcmp(recvBuf.c_str(), "\r\nnext\r\n") == 0)
@@ -592,16 +616,16 @@ void del(string seid, vector<string> cmods, int cmodsNum)
             if (!send_message(s, sendMsg))
             {
                 *funlog << "send to Server error "
-                        << "error code:" << WSAGetLastError() << "\n";
+                        << "error code:" << WSAGetLastError() << lns::endl;
                 break;
             }
         }
     }
-    *funlog << "del End\n";
+    *funlog << "del End" << lns::endl;
 }
 void show(string seid, vector<string> cmods, int cmodsNum)
 {
-    auto funlog = prlog.getFunLog("show SEID:" + seid);
+    auto funlog = prlog.getFunLog("show");
     std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     string recvBuf;
@@ -612,13 +636,13 @@ void show(string seid, vector<string> cmods, int cmodsNum)
             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
             if (ServerSEIDMap[seid].isBack)
             {
-                *funlog << "Server is exit\n";
+                *funlog << "Server is exit" << lns::endl;
                 break;
             }
         }
         if (showForSend(seid, temp) < 0)
         {
-            *funlog << "showForSend error\n";
+            *funlog << "showForSend error" << lns::endl;
             break;
         }
         bool state = false;
@@ -628,25 +652,25 @@ void show(string seid, vector<string> cmods, int cmodsNum)
         if (!state)
         {
             *funlog << "Server Socket error "
-                    << "error code:" << WSAGetLastError() << "\n";
-            *funlog << "show End\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
+            *funlog << "show End" << lns::endl;
             return;
         }
         else if (strcmp(recvBuf.c_str(), "\r\nclose\r\n") == 0)
         {
             *funlog << "Server exit show "
-                    << "error code:" << WSAGetLastError() << "\n";
-            *funlog << "show End\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
+            *funlog << "show End" << lns::endl;
             return;
         }
     }
-    *funlog << "show End\n";
+    *funlog << "show End" << lns::endl;
     return;
 }
 void cmod(string seid, vector<string> cmods, int cmodsNum)
 {
     //[del,cmd,show][all,]
-    auto funlog = prlog.getFunLog("cmod SEID:" + seid);
+    auto funlog = prlog.getFunLog("cmod");
     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
     filter f;
     {
@@ -654,10 +678,10 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
         if (!send_message(s, "\r\ncmd error\r\n"))
         {
             *funlog << "send to Server error "
-                    << "error code:" << WSAGetLastError() << "\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
         }
-        *funlog << "Server cmd error\n";
-        *funlog << "cmod End\n";
+        *funlog << "Server cmd error" << lns::endl;
+        *funlog << "cmod End" << lns::endl;
         return;
     }
     std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
@@ -667,8 +691,8 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
             if (ServerSEIDMap[seid].isBack)
             {
-                *funlog << "Server is exit\n";
-                *funlog << "cmod End\n";
+                *funlog << "Server is exit" << lns::endl;
+                *funlog << "cmod End" << lns::endl;
                 return;
             }
         }
@@ -676,8 +700,8 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             if (!send_message(s, "\r\ndel\r\n"))
             {
                 *funlog << "send to Server error "
-                        << "error code:" << WSAGetLastError() << "\n";
-                *funlog << "cmod End\n";
+                        << "error code:" << WSAGetLastError() << lns::endl;
+                *funlog << "cmod End" << lns::endl;
                 return;
             }
         }
@@ -687,8 +711,8 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
                 std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
                 if (ServerSEIDMap[seid].isBack)
                 {
-                    *funlog << "Server is exit\n";
-                    *funlog << "cmod End\n";
+                    *funlog << "Server is exit" << lns::endl;
+                    *funlog << "cmod End" << lns::endl;
                     return;
                 }
             }
@@ -734,8 +758,8 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
         }
         if (ServerSEIDMap[seid].isBack)
         {
-            *funlog << "Server exit\n";
-            *funlog << "cmod End\n";
+            *funlog << "Server exit" << lns::endl;
+            *funlog << "cmod End" << lns::endl;
             return;
         }
         if (!send_message(s, "\r\nok\r\n") ||
@@ -743,7 +767,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             !send_message(s, to_string(ClientMap.size()).c_str()))
         {
             *funlog << "send to Server error "
-                    << "error code:" << WSAGetLastError() << "\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
         }
     }
     else if (strcmp(cmods[1].c_str(), "cmd") == 0 && cmodsNum >= 4)
@@ -752,16 +776,16 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
             if (ServerSEIDMap[seid].isBack)
             {
-                *funlog << "Server is exit\n";
-                *funlog << "cmod End\n";
+                *funlog << "Server is exit" << lns::endl;
+                *funlog << "cmod End" << lns::endl;
                 return;
             }
         }
         if (!send_message(s, "\r\ncmd\r\n"))
         {
             *funlog << "send to Server error "
-                    << "error code:" << WSAGetLastError() << "\n";
-            *funlog << "cmod End\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
+            *funlog << "cmod End" << lns::endl;
             return;
         }
         int cmdstart = 0;
@@ -773,8 +797,8 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
                 std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
                 if (ServerSEIDMap[seid].isBack)
                 {
-                    *funlog << "Server is exit\n";
-                    *funlog << "cmod End\n";
+                    *funlog << "Server is exit" << lns::endl;
+                    *funlog << "cmod End" << lns::endl;
                     return;
                 }
             }
@@ -815,20 +839,20 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
                 std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
                 if (ServerSEIDMap[seid].isBack)
                 {
-                    *funlog << "Server is exit\n";
-                    *funlog << "cmod End\n";
+                    *funlog << "Server is exit" << lns::endl;
+                    *funlog << "cmod End" << lns::endl;
                     return;
                 }
             }
             if (!send_message(s, "\r\ncmd error\r\n"))
             {
                 *funlog << "send to Server error "
-                        << "error code:" << WSAGetLastError() << "\n";
-                *funlog << "cmod End\n";
+                        << "error code:" << WSAGetLastError() << lns::endl;
+                *funlog << "cmod End" << lns::endl;
                 return;
             }
-            *funlog << "Server cmd error\n";
-            *funlog << "cmod End\n";
+            *funlog << "Server cmd error" << lns::endl;
+            *funlog << "cmod End" << lns::endl;
             return;
         }
         string sendBuf;
@@ -850,16 +874,16 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             {
                 if (f.matching(ClientMap[i - 1].ClientWanIp, ClientMap[i - 1].ClientLanIp, to_string(ClientMap[i - 1].ClientConnectPort)) && ClientMap[i - 1].state != ClientSocketFlagStruct::Use)
                 {
-                    *funlog << "Server cmd match one\n";
+                    *funlog << "Server cmd match one" << lns::endl;
                     sectClient++;
                     if (!send_message(ClientSEIDMap[ClientMap[i - 1].SEID].ServerSocket, sendBuf)) // 发送指令至Client
                     {
                         *funlog << "send to Client error "
-                                << "error code:" << WSAGetLastError() << "\n";
+                                << "error code:" << WSAGetLastError() << lns::endl;
                         if (!send_message(s, "\r\ncmd error\r\n"))
                         {
                             *funlog << "send to Server error "
-                                    << "error code:" << WSAGetLastError() << "\n";
+                                    << "error code:" << WSAGetLastError() << lns::endl;
                             ClientMapLock.exchange(false, std::memory_order_release);
                             return;
                         }
@@ -872,8 +896,8 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
             if (ServerSEIDMap[seid].isBack)
             {
-                *funlog << "Server is exit\n";
-                *funlog << "cmod End\n";
+                *funlog << "Server is exit" << lns::endl;
+                *funlog << "cmod End" << lns::endl;
                 return;
             }
         }
@@ -882,7 +906,7 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             !send_message(s, to_string(ClientMap.size()).c_str()))
         {
             *funlog << "send to Server error "
-                    << "error code:" << WSAGetLastError() << "\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
         }
     }
     else if (strcmp(cmods[1].c_str(), "show") == 0 && cmodsNum >= 3)
@@ -891,16 +915,16 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
             if (ServerSEIDMap[seid].isBack)
             {
-                *funlog << "Server is exit\n";
-                *funlog << "cmod End\n";
+                *funlog << "Server is exit" << lns::endl;
+                *funlog << "cmod End" << lns::endl;
                 return;
             }
         }
         if (!send_message(s, "\r\nsee\r\n"))
         {
             *funlog << "send to Server error "
-                    << "error code:" << WSAGetLastError() << "\n";
-            *funlog << "cmod End\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
+            *funlog << "cmod End" << lns::endl;
             return;
         }
         for (int i = 2; i <= cmodsNum && (cmodsNum - i) >= 2; i += 3)
@@ -940,8 +964,8 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
             if (ServerSEIDMap[seid].isBack)
             {
-                *funlog << "Server is exit\n";
-                *funlog << "cmod End\n";
+                *funlog << "Server is exit" << lns::endl;
+                *funlog << "cmod End" << lns::endl;
                 return;
             }
         }
@@ -950,10 +974,10 @@ void cmod(string seid, vector<string> cmods, int cmodsNum)
             !send_message(s, to_string(ClientMap.size()).c_str()))
         {
             *funlog << "send to Server error "
-                    << "error code:" << WSAGetLastError() << "\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
         }
     }
-    *funlog << "cmod End\n";
+    *funlog << "cmod End" << lns::endl;
     return;
 }
 string createSEID(SOCKET sock, string something = NULL)
@@ -1023,22 +1047,22 @@ void ServerRS(SOCKET s)
         {
             return;
         }
-        lastloginYZM = loginYZM;
+        lastloginYZM = recvBuf;
     }
     if (!loginTRUE)
     {
-        auto funlog = prlog.getFunLog("ServerRS Temp");
-        *funlog << "login error\n";
+        auto funlog = prlog.getFunLog("ServerRS");
+        *funlog << "login error" << lns::endl;
         return;
     }
     string SEID = createSEID(s, lastloginYZM + loginYZM);
-    auto funlog = prlog.getFunLog("ServerRS SEID:" + SEID);
+    auto funlog = prlog.getFunLog("ServerRS");
     {
         std::lock_guard<std::mutex> lock(ServerSEIDMap[SEID].ServerSocketLock);
         if (!send_message(s, SEID.c_str()))
         {
             *funlog << "send to Server error "
-                    << "error code:" << WSAGetLastError() << "\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
             return;
         }
     }
@@ -1051,7 +1075,7 @@ void ServerRS(SOCKET s)
     std::unique_lock<std::mutex> lock(ServerSEIDMap[SEID].isSocketExitLock);
     ServerSEIDMap[SEID].cv.wait(lock, [SEID]
                                 { return ServerSEIDMap[SEID].isSocketExit; });
-    *funlog << "Server online\n";
+    *funlog << "Server online" << lns::endl;
     try
     {
         healthyLock();
@@ -1060,7 +1084,7 @@ void ServerRS(SOCKET s)
     }
     catch (std::exception &e)
     {
-        *funlog << "Server Healthy Queue push error\n";
+        *funlog << "Server Healthy Queue push error" << lns::endl;
     }
 
     while (1)
@@ -1069,8 +1093,8 @@ void ServerRS(SOCKET s)
             std::lock_guard<std::mutex> lock(ServerSEIDMap[SEID].OtherValueLock);
             if (ServerSEIDMap[SEID].isBack)
             {
-                *funlog << "Server is exit\n";
-                *funlog << "ServerRS End\n";
+                *funlog << "Server is exit" << lns::endl;
+                *funlog << "ServerRS End" << lns::endl;
                 break;
             }
         }
@@ -1083,20 +1107,20 @@ void ServerRS(SOCKET s)
         if (!state || recvBuf.find("\r\nClose\r\n") != string::npos)
         {
             *funlog << "recv From Server error "
-                    << "error code:" << WSAGetLastError() << "\n";
+                    << "error code:" << WSAGetLastError() << lns::endl;
             std::lock_guard<std::mutex> lock(ServerSEIDMap[SEID].ServerSocketLock);
             std::lock_guard<std::mutex> lockO(ServerSEIDMap[SEID].OtherValueLock);
             ServerSEIDMap[(string)SEID].isBack = true;
             closesocket(s);
-            *funlog << "Server exit\n";
-            *funlog << "ServerRS End\n";
+            *funlog << "Server exit" << lns::endl;
+            *funlog << "ServerRS End" << lns::endl;
             return;
         }
         else
         {
-            *funlog << "Recv:\n---------------------------------------------\n"
-                    << string(recvBuf).substr(0, (recvBuf.length() > 60 ? recvBuf.length() / 2 : recvBuf.length() - 1)) << "\n"
-                    << "....\n---------------------------------------------\n";
+            *funlog << "Recv:\n---------------------------------------------" << lns::endl
+                    << string(recvBuf).substr(0, (recvBuf.length() > 60 ? recvBuf.length() / 2 : recvBuf.length() - 1)) << lns::endl
+                    << "....\n---------------------------------------------" << lns::endl;
             vector<string> cmods;
             string token;
             int tokenNum = 0;
@@ -1109,19 +1133,19 @@ void ServerRS(SOCKET s)
             switch (StringToInt[cmods[0]])
             {
             case 1:
-                *funlog << "Server command:Connect\n";
+                *funlog << "Server command:Connect" << lns::endl;
                 Connect(SEID, cmods, tokenNum); // ok
                 break;
             case 2:
-                *funlog << "Server command:del Client\n";
+                *funlog << "Server command:del Client" << lns::endl;
                 del(SEID, cmods, tokenNum); // ok
                 break;
             case 3:
-                *funlog << "Server command:show Client\n";
+                *funlog << "Server command:show Client" << lns::endl;
                 show(SEID, cmods, tokenNum); // ok
                 break;
             case 4:
-                *funlog << "Server command:run command\n";
+                *funlog << "Server command:run command" << lns::endl;
                 cmod(SEID, cmods, tokenNum); // ok
                 break;
             default:
@@ -1147,18 +1171,18 @@ void ClientRS(SOCKET s)
         ClientSEIDMap[SEID].isSEIDExit = true;
     }
 
-    auto funlog = prlog.getFunLog("ClientRS SEID:" + SEID);
+    auto funlog = prlog.getFunLog("ClientRS");
     if (!send_message(s, SEID))
     {
         *funlog << "send to Client error "
-                << "error code:" << WSAGetLastError() << "\n";
+                << "error code:" << WSAGetLastError() << lns::endl;
         return;
     }
     joinClient(ClientWanIp, ClientLanIp, ClientPort, time(NULL), 0, SEID);
     std::unique_lock<std::mutex> lock(ClientSEIDMap[SEID].isSocketExitLock);
     ClientSEIDMap[SEID].cv.wait(lock, [SEID]
                                 { return ClientSEIDMap[SEID].isSocketExit; });
-    *funlog << "Client online\n";
+    *funlog << "Client online" << lns::endl;
     healthyLock();
     HealthyQueue.push({SEID, true});
     healthyUnlock();
@@ -1166,7 +1190,7 @@ void ClientRS(SOCKET s)
     {
         if (ClientSEIDMap[(string)SEID].isBack)
         {
-            *funlog << "Client exit\n";
+            *funlog << "Client exit" << lns::endl;
             closesocket(s);
             return;
         }
@@ -1222,19 +1246,19 @@ int main(int argc, char **argv)
     temp = temp.substr(0, temp.find(".out"));
 #endif
     prlog = logNameSpace::Log(temp);
-    prlog << "program start" << "\n";
-    prlog << "log init ok" << "\n";
-    prlog << "program name:" << temp << "\n";
+    prlog << "program start" << lns::endl;
+    prlog << "log init ok" << lns::endl;
+    prlog << "program name:" << temp << lns::endl;
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
     system("chcp 65001");
 #endif
     loadData();
-    prlog << "loadData OK\n";
+    prlog << "loadData OK" << lns::endl;
     int ir = initServer(ListenSocket, service, ServerPort);
     if (ir != 0)
     {
-        prlog << "ERROR:initServer failed\n";
-        prlog << "Error code:" << ir << "\n";
+        prlog << "ERROR:initServer failed" << lns::endl;
+        prlog << "Error code:" << ir << lns::endl;
         return ir;
     }
     thread HealthyCheackThread = thread(HealthyCheack);
@@ -1242,10 +1266,10 @@ int main(int argc, char **argv)
     thread ServerConnectThread = thread(ServerConnect);
     thread dataSaveThread = thread(dataSave);
     thread PassDataThread = thread(passData);
-    prlog << "server init ok\n";
-    prlog << "port:" << (ServerPort) << "\n";
-    prlog << "Listen!\n";
-    cout << "star Server\n";
+    prlog << "server init ok" << lns::endl;
+    prlog << ("port:" + to_string(ServerPort)) << lns::endl;
+    prlog << "Listen!" << lns::endl;
+    cout << "star Server" << endl;
     while (true)
     {
         string buf;
@@ -1264,64 +1288,69 @@ int main(int argc, char **argv)
             {
                 closesocket(aptSocket);
                 prlog << "recv From Socket error "
-                      << "error code:" << WSAGetLastError() << "\n";
+                      << "error code:" << WSAGetLastError() << lns::endl;
                 continue;
             }
             if (strcmp(buf.c_str(), "Client") == 0)
             {
-                if (!send_message(aptSocket, "Recv"))
+                if (!send_message(aptSocket, "OK"))
                 {
                     closesocket(aptSocket);
                     prlog << "send to Client error "
-                          << "error code:" << WSAGetLastError() << "\n";
+                          << "error code:" << WSAGetLastError() << lns::endl;
                     continue;
                 }
+                prlog << "Client Connect" << lns::endl;
                 ClientSocketQueue.push(aptSocket);
                 Queuecv.notify_all();
-                prlog << "Client Connect\n";
                 char clientIP[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &(aptsocketAddr.sin_addr), clientIP, INET_ADDRSTRLEN);
-                prlog << "Client IP:" << clientIP << "\n";
+                prlog << "Client IP:" << clientIP << lns::endl;
             }
             else if (strcmp(buf.c_str(), "Server") == 0)
             {
-                if (!send_message(aptSocket, "Recv"))
+                if (!send_message(aptSocket, "OK"))
                 {
                     closesocket(aptSocket);
                     prlog << "send to Server error "
-                          << "error code:" << WSAGetLastError() << "\n";
+                          << "error code:" << WSAGetLastError() << lns::endl;
                     continue;
                 }
+                prlog << "Server Connect" << lns::endl;
                 ServerSocketQueue.push(aptSocket);
                 Queuecv.notify_all();
-                prlog << "Server Connect\n";
                 char ServerIP[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &(aptsocketAddr.sin_addr), ServerIP, INET_ADDRSTRLEN);
-                prlog << "Server IP:" << ServerIP << "\n";
+                prlog << "Server IP:" << ServerIP << lns::endl;
             }
-            else if (ServerSEIDMap[buf].isSEIDExit)
+            else if (ServerSEIDMap.find(buf) != ServerSEIDMap.end())
             {
                 std::lock_guard<std::mutex> lockH(ServerSEIDMap[buf].ServerHealthySocketLock);
                 std::lock_guard<std::mutex> lockO(ServerSEIDMap[buf].OtherValueLock);
                 ServerSEIDMap[buf].socketH = aptSocket;
                 ServerSEIDMap[buf].isSocketExit = true;
                 ServerSEIDMap[buf].cv.notify_all();
-                prlog << "Server Healthy Connect\n";
+                prlog << "Server Healthy Connect" << lns::endl;
                 char ServerIP[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &(aptsocketAddr.sin_addr), ServerIP, INET_ADDRSTRLEN);
-                prlog << "Server IP:" << ServerIP << "\n";
+                prlog << "Server IP:" << ServerIP << lns::endl;
             }
-            else if (ClientSEIDMap[buf].isSEIDExit)
+            else if (ClientSEIDMap.find(buf) != ClientSEIDMap.end())
             {
                 std::lock_guard<std::mutex> lockH(ClientSEIDMap[buf].ServerHealthySocketLock);
                 std::lock_guard<std::mutex> lockO(ClientSEIDMap[buf].OtherValueLock);
                 ClientSEIDMap[buf].socketH = aptSocket;
                 ClientSEIDMap[buf].isSocketExit = true;
                 ClientSEIDMap[buf].cv.notify_all();
-                prlog << "Client Healthy Connect\n";
+                prlog << "Client Healthy Connect" << lns::endl;
                 char clientIP[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &(aptsocketAddr.sin_addr), clientIP, INET_ADDRSTRLEN);
-                prlog << "Client IP:" << clientIP << "\n";
+                prlog << "Client IP:" << clientIP << lns::endl;
+            }
+            else
+            {
+                prlog << "Connect error" << lns::endl;
+                closesocket(aptSocket);
             }
         }
     }

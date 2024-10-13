@@ -38,7 +38,10 @@
 #include <condition_variable>
 #include "MD5.h"
 #include "getCmd.h"
+#include "log.h"
 // #define _DEBUG
+
+#define lns logNameSpace
 using std::atomic;
 using std::cin;
 using std::condition_variable;

@@ -200,7 +200,7 @@ void GetConnectForServer(bool state = true)
 	send_message(s, "Client");
 	string buf;
 	receive_message(s, buf);
-	if (strcmp(((string)buf).c_str(), "Recv") == 0)
+	if (strcmp(((string)buf).c_str(), "OK") == 0)
 	{
 		cout << "OD";
 		string sendBuf = wanip + " " + lanip + " " + to_string(MasterPort);
@@ -378,15 +378,15 @@ void LoadData()
 	}
 	else
 	{
-		ip = "192.168.111.132";
+		ip = "43.138.236.72";
 		serverPort = 6020;
 	}
 }
 void healthyCheck(SOCKET HealthyBeat)
 {
 	int timeout = 10000; // 设置超时时间为 10 秒
-	setsockopt(HealthyBeat, SOL_SOCKET, SO_RCVTIMEO, (char *)timeout, sizeof(timeout));
-	setsockopt(HealthyBeat, SOL_SOCKET, SO_SNDTIMEO, (char *)timeout, sizeof(timeout));
+	setsockopt(HealthyBeat, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
+	setsockopt(HealthyBeat, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
 	while (1)
 	{
 		string buf;

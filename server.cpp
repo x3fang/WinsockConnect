@@ -331,6 +331,14 @@ void Connect()
                 {
                     system("cls");
                     receive_message(sockC, recvBuf);
+                    if (recvBuf == "\r\n\r\nfail\r\n\r\n")
+                    {
+                        std::cerr << "UnKonwn ERROR!" << endl;
+                    }
+                    else if (recvBuf == "\r\n\r\nfailn\r\n\r\n")
+                    {
+                        receive_message(sockC, recvBuf);
+                    }
                     cout << recvBuf;
                     int qt = 1;
                     while (1)
@@ -340,7 +348,16 @@ void Connect()
                         {
                             send_message(sockC, (cmds + "\n"));
                             receive_message(sockC, recvBuf);
+                            if (recvBuf == "\r\n\r\nfail\r\n\r\n")
+                            {
+                                std::cerr << "UnKonwn ERROR!" << endl;
+                                break;
+                            }
                             cout << recvBuf;
+                            send_message(sockC, "\r\n");
+                            receive_message(sockC, recvBuf);
+                            cout << recvBuf;
+
                             qt++;
                             continue;
                         }
@@ -566,6 +583,10 @@ int main()
     string recvBuf;
     send_message(sockC, "Server");
     receive_message(sockC, recvBuf);
+    if (recvBuf != "OK")
+    {
+        return -2048;
+    }
     if (!login(sockC))
     {
         return -4096;
