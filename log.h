@@ -62,14 +62,16 @@ namespace logNameSpace
     class Log
     {
     public:
-        Log() = default;
+        Log();
         Log(const std::string name, int logMaxSize = 1024 * 1024 * 128);
         ~Log();
+        Log *operator=(Log &other);
         Log &operator=(Log &&other) noexcept;
         void mustChangeFlie();
-        void write(const std::string &msg);
+        void write(std::string msg);
         void write(std::vector<std::string> &msg);
-        Log &operator<<(const std::string &msg);
+        void setName(const std::string name) { this->logName = name; }
+        Log &operator<<(const std::string msg);
         Log &operator<<(const int msg);
         Log &operator<<(ENDL &e)
         {
@@ -129,6 +131,19 @@ namespace logNameSpace
         return *this;
     }
 
+    Log::Log()
+    {
+        this->writeFlie = std::unique_ptr<std::atomic<bool>>(new std::atomic<bool>(false));
+        this->logName = "NULL";
+        this->logMaxSize = 1024 * 1024 * 128;
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+        createDirectory("log");
+#endif
+#if __linux__
+        createDirectory("/" + logName + "-log");
+#endif
+    }
     // Log fun
     Log::Log(const std::string name, int logMaxSize)
     {
@@ -164,6 +179,10 @@ namespace logNameSpace
             delete &it->second;
         }
     }
+    Log *Log::operator=(Log &other)
+    {
+        return &other;
+    }
     Log &Log::operator=(Log &&other) noexcept
     {
         this->msg = other.msg;
@@ -198,9 +217,16 @@ namespace logNameSpace
         }
         logName = temp;
     }
-    void Log::write(const std::string &msg)
+    void Log::write(std::string msg)
     {
-        this->msg += msg;
+        try
+        {
+            this->msg += msg;
+        }
+        catch (...)
+        {
+            return;
+        }
         if (this->msg.find("\n") != std::string::npos)
         {
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
@@ -228,11 +254,11 @@ namespace logNameSpace
         mustChangeFlie();
         return;
     }
-    Log &Log::operator<<(const std::string &msg)
+    Log &Log::operator<<(const std::string msg)
     {
         while (this->writeFlie->exchange(true, std::memory_order_acquire))
             ;
-        write(msg);
+        write(std::string(msg));
         this->writeFlie->store(false, std::memory_order_release);
         return *this;
     }

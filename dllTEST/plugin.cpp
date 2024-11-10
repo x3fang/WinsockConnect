@@ -1,13 +1,14 @@
 #include "plugin.h"
 
 bool EXPORT registerPlugin(string pluginName,
-                           std::bitset<RUN_LINE_NUM> runline,
+                           string runlineS,
                            void (*startupfunPtr)(),
                            void (*startfunPtr)(),
                            void (*stopfunPtr)(),
                            bool (*runfunPtr)(allInfoStruct &info),
                            bool isStart)
 {
+    std::bitset<RUN_LINE_NUM> runline(runLineMap[runlineS]);
     if (!findPlugin(pluginName))
         return false;
     while (pluginVectorLock.exchange(true, std::memory_order_acquire))
@@ -21,7 +22,10 @@ bool EXPORT registerPlugin(string pluginName,
                                                        runfunPtr,
                                                        isStart);
     pluginNameList.push_back(pluginName);
-    newPlugin->plugin->startupFun();
+    if (newPlugin->plugin->startupFun != nullptr)
+    {
+        newPlugin->plugin->startupFun();
+    }
     for (int i = 0; i < RUN_LINE_NUM; i++)
     {
         if (runline[i])
@@ -63,10 +67,10 @@ bool EXPORT delPlugin(string pluginName)
 }
 bool EXPORT findPlugin(string pluginName)
 {
-    return (find(pluginNameList.begin(), pluginNameList.end(), pluginName) != pluginNameList.end());
+    return (find(pluginNameList.begin(), pluginNameList.end(), pluginName) == pluginNameList.end());
 }
 bool EXPORT rsetPlugin(string pluginName,
-                       std::bitset<RUN_LINE_NUM> runline,
+                       string runlineS,
                        void (*startupfunPtr)(),
                        void (*startfunPtr)(),
                        void (*stopfunPtr)(),
@@ -76,7 +80,7 @@ bool EXPORT rsetPlugin(string pluginName,
     if (!findPlugin(pluginName))
         return false;
     if (delPlugin(pluginName))
-        return registerPlugin(pluginName, runline, startupfunPtr, startfunPtr, stopfunPtr, runfunPtr, isStart);
+        return registerPlugin(pluginName, runlineS, startupfunPtr, startfunPtr, stopfunPtr, runfunPtr, isStart);
     return false;
 }
 bool EXPORT startPlugin(string pluginName)

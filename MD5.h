@@ -1,7 +1,4 @@
-#include <iostream>
-#include <vector>
-#include <cstdlib>
-#include <string>
+
 
 #define A 0x67452301
 #define B 0xefcdab89

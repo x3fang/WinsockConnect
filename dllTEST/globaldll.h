@@ -39,8 +39,8 @@
 #include <condition_variable>
 #include "../MD5.h"
 #include "../getCmd.h"
-#include "../log.h"
 #include "fliterDLL.h"
+#include "definehead.h"
 #define EXPORT __declspec(dllexport)
 // #define _DEBUG
 
@@ -63,91 +63,6 @@ using std::string;
 using std::thread;
 using std::to_string;
 using std::vector;
-typedef struct ClientSocketFlagStruct
-{
-    string SEID;
-    string ClientWanIp;
-    string ClientLanIp;
-    unsigned long long int OnlineTime, OfflineTime;
-    int ClientConnectPort;
-    enum states
-    {
-        NULLs = 0,
-        Online = 1,
-        Offline = 2,
-        Use = 3
-    };
-    states state;
-    bool operator==(const ClientSocketFlagStruct &e)
-    {
-        return (this->ClientLanIp == e.ClientLanIp && this->ClientWanIp == e.ClientWanIp);
-    }
-};
-typedef struct SEIDForSocketStruct
-{
-    SOCKET socketH;
-    bool isSocketExit;
-    bool isSEIDExit;
-    bool isBack;
-    bool isUse;
-    string SEID;
-    SOCKET ServerSocket;
-    mutex isSocketExitLock;
-    mutex ServerSocketLock;
-    mutex ServerHealthySocketLock;
-    mutex OtherValueLock;
-    std::condition_variable cv;
-    atomic<bool> serverSocketLock;
-    atomic<bool> serverHealthySocketLock;
-    atomic<bool> otherValueLock;
-
-    SEIDForSocketStruct()
-    {
-        SEID.clear();
-        ServerSocket = INVALID_SOCKET;
-        socketH = INVALID_SOCKET;
-        isSEIDExit = false;
-        isSocketExit = false;
-        isBack = false;
-        isUse = false;
-        serverSocketLock.exchange(false, std::memory_order_relaxed);
-        serverHealthySocketLock.exchange(false, std::memory_order_relaxed);
-        otherValueLock.exchange(false, std::memory_order_relaxed);
-    }
-    void getServerSocketLock()
-    {
-        while (serverSocketLock.exchange(true, std::memory_order_acquire))
-            ;
-    }
-    void releaseServerSocketLock()
-    {
-        serverSocketLock.exchange(false, std::memory_order_release);
-    }
-    void getServerHealthySocketLock()
-    {
-        while (serverHealthySocketLock.exchange(true, std::memory_order_acquire))
-            ;
-    }
-    void releaseServerHealthySocketLock()
-    {
-        serverHealthySocketLock.exchange(false, std::memory_order_release);
-    }
-    void getOtherValueLock()
-    {
-        while (otherValueLock.exchange(true, std::memory_order_acquire))
-            ;
-    }
-    void releaseOtherValueLock()
-    {
-        otherValueLock.exchange(false, std::memory_order_release);
-    }
-};
-
-struct HealthyDataStruct
-{
-    string SEID;
-    bool isServer;
-};
 
 map<string, int>
     StringToIntInComd = {
@@ -180,7 +95,6 @@ atomic<bool> ClientMapLock(false);
 mutex ServerQueueLock, ClientQueueLock;
 condition_variable Queuecv;
 
-logNameSpace::Log prlog("");
 bool send_message(SOCKET sock, const std::string &message);
 bool receive_message(SOCKET sock, std::string &message);
 

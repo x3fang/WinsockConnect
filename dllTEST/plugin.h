@@ -1,8 +1,8 @@
 #ifndef PLUGIN_H
 #define PLUGIN_H
-
-#include "globaldll.h"
-
+#define EXPORT __declspec(dllexport)
+#include "definehead.h"
+// #include "globaldll.h"
 /*
 run line:
 0: accept socket
@@ -19,7 +19,6 @@ run line:
 11: everyFunction end
 12: create SEID
 */
-#define RUN_LINE_NUM 15
 map<string, string> runLineMap = {
     {"as", "1000000000000000"},       // accept socket
     {"sRSstart", "0100000000000000"}, // serverRS start
@@ -55,48 +54,6 @@ enum RunLine
     Fun = 13,
     Log = 14
 
-};
-struct EXPORT allInfoStruct
-{
-    string SEID;
-    string msg;
-    vector<string> msgVector;
-    queue<SOCKET> *ClientSocketQueue, *ServerSocketQueue;
-    map<string, SEIDForSocketStruct> *ServerSEIDMap, *ClientSEIDMap;
-    vector<ClientSocketFlagStruct> *ClientMap;
-    mutex *ServerQueueLock, *ClientQueueLock;
-    SOCKET NowSocket;
-    allInfoStruct(string seid, SOCKET Nsocket, string msg = "")
-    {
-        SEID = seid;
-        this->ClientSocketQueue = ClientSocketQueue;
-        this->ServerSocketQueue = ServerSocketQueue;
-        this->ServerSEIDMap = ServerSEIDMap;
-        this->ClientSEIDMap = ClientSEIDMap;
-        this->ClientMap = ClientMap;
-        this->ServerQueueLock = ServerQueueLock;
-        this->ClientQueueLock = ClientQueueLock;
-        this->NowSocket = Nsocket;
-        this->msg = msg;
-    }
-    allInfoStruct(string seid, SOCKET Nsocket, vector<string> msgVector)
-    {
-        SEID = seid;
-        this->ClientSocketQueue = ClientSocketQueue;
-        this->ServerSocketQueue = ServerSocketQueue;
-        this->ServerSEIDMap = ServerSEIDMap;
-        this->ClientSEIDMap = ClientSEIDMap;
-        this->ClientMap = ClientMap;
-        this->ServerQueueLock = ServerQueueLock;
-        this->ClientQueueLock = ClientQueueLock;
-        this->NowSocket = Nsocket;
-        this->msgVector = msgVector;
-    }
-    ~allInfoStruct()
-    {
-        this->ServerQueueLock = nullptr;
-        this->ClientQueueLock = nullptr;
-    }
 };
 struct EXPORT pluginStruct
 {
@@ -141,20 +98,20 @@ string fileName;
 extern "C"
 {
     bool EXPORT registerPlugin(string pluginName,
-                               std::bitset<RUN_LINE_NUM> runline,
+                               string runlineS,
                                void (*startupfunPtr)(),
                                void (*startfunPtr)(),
                                void (*stopfunPtr)(),
-                               bool (*runfunPtr)(allInfoStruct &info),
+                               bool (*runfunPtr)(allInfoStruct &),
                                bool isStart = true);
     bool EXPORT delPlugin(string pluginName);
     bool EXPORT findPlugin(string pluginName);
     bool EXPORT rsetPlugin(string pluginName,
-                           std::bitset<RUN_LINE_NUM> runline,
+                           string runlineS,
                            void (*startupfunPtr)(),
                            void (*startfunPtr)(),
                            void (*stopfunPtr)(),
-                           bool (*runfunPtr)(allInfoStruct &info),
+                           bool (*runfunPtr)(allInfoStruct &),
                            bool isStart = true);
     bool EXPORT startPlugin(string pluginName);
     // bool EXPORT LogWrite(string logMSG);

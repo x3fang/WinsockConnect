@@ -379,9 +379,10 @@ void ServerRS(SOCKET s)
             std::lock_guard<std::mutex> lock(ServerSEIDMap[SEID].ServerSocketLock);
             state = receive_message(s, recvBuf);
         }
+        *funlog << state << closeServer << recvBuf << lns::endl;
         if (closeServer)
             break;
-        if (!closeServer || !state || recvBuf.find("\r\nClose\r\n") != string::npos)
+        if (closeServer || !state || recvBuf.find("\r\nClose\r\n") != string::npos)
         {
             *funlog << "recv From Server error "
                     << "error code:" << WSAGetLastError() << lns::endl;
@@ -419,6 +420,7 @@ void ServerRS(SOCKET s)
                 cmods.push_back(token);
             }
             bool findFun = false;
+            cout << "cmods:" << cmods[0] << endl;
             for (auto *it = pluginList[13];
                  it != nullptr && it->next != nullptr;
                  it = it->next)
@@ -666,6 +668,8 @@ extern "C" int EXPORT start()
             }
             else if (ServerSEIDMap.find(buf) != ServerSEIDMap.end())
             {
+                cout << "ServerSEIDMap find" << endl;
+                prlog << "Server Healthy Connect" << lns::endl;
                 std::lock_guard<std::mutex> lockH(ServerSEIDMap[buf].ServerHealthySocketLock);
                 std::lock_guard<std::mutex> lockO(ServerSEIDMap[buf].OtherValueLock);
                 ServerSEIDMap[buf].socketH = aptSocket;

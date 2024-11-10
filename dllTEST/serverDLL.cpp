@@ -138,11 +138,8 @@ int sendClientList(SOCKET &s)
     do
     {
         string recvBuf;
-        if (!receive_message(sockC, recvBuf))
-        {
-            cout << WSAGetLastError() << endl;
-        }
-        if (strcmp(string(recvBuf).c_str(), "\r\nend\r\n") == 0)
+        receive_message(sockC, recvBuf);
+        if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
         {
             break;
         }
@@ -251,8 +248,6 @@ void healthyCheck(SOCKET HealthyBeat)
             return;
         }
     }
-    while (1)
-        cout << "1";
 }
 int login(SOCKET s)
 {
@@ -264,34 +259,33 @@ int login(SOCKET s)
     MD5 m;
     try
     {
-        // coin("password:", password);
-        // for (int i = 1; i <= 5 && !loginTRUE; i++)
-        // {
-        //     m.init();
-        //     string recvBuf;
-        //     string temp = StringTime(time(NULL)) + lastloginYZM + password;
-        //     loginYZM = m.encode(temp);
-        //     send_message(s, loginYZM);
-        //     receive_message(s, recvBuf);
-        //     if (recvBuf == "error")
-        //     {
-        //         coin("password:", password);
-        //         system("cls");
-        //         lastloginYZM = loginYZM;
-        //         continue;
-        //     }
-        //     else if (recvBuf == "true")
-        //     {
-        //         loginTRUE = true;
-        //         break;
-        //     }
-        // }
-        // if (!loginTRUE)
-        //     return 0;
+        coin("password:", password);
+        for (int i = 1; i <= 5 && !loginTRUE; i++)
+        {
+            m.init();
+            string recvBuf;
+            string temp = StringTime(time(NULL)) + lastloginYZM + password;
+            loginYZM = m.encode(temp);
+            send_message(s, loginYZM);
+            receive_message(s, recvBuf);
+            if (recvBuf == "error")
+            {
+                coin("password:", password);
+                system("cls");
+                lastloginYZM = loginYZM;
+                continue;
+            }
+            else if (recvBuf == "true")
+            {
+                loginTRUE = true;
+                break;
+            }
+        }
+        if (!loginTRUE)
+            return 0;
         string recvBuf;
         receive_message(s, recvBuf);
         SEID = recvBuf;
-        cout << "SEID:" << SEID << endl;
         initClient(healthyBeat, healthyBeatAddr, serverIp, serverPort);
         if (connect(healthyBeat, (sockaddr *)&healthyBeatAddr, sizeof(healthyBeatAddr)) == SOCKET_ERROR)
         {
@@ -318,7 +312,6 @@ void Connect()
 
     while (1)
     {
-        cout << "TEST DEBUG";
         system("cls");
         int clientNum = sendClientList(sockC);
         if (_kbhit())
