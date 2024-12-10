@@ -8,7 +8,8 @@ bool EXPORT registerPlugin(string pluginName,
                            bool (*runfunPtr)(allInfoStruct &info),
                            bool isStart)
 {
-    std::bitset<RUN_LINE_NUM> runline(runLineMap[runlineS]);
+    cout << runLineMap[runlineS] << endl;
+    std::bitset<RUN_LINE_NUM> runline(runLineMap[runlineS], 0);
     if (!findPlugin(pluginName))
         return false;
     while (pluginVectorLock.exchange(true, std::memory_order_acquire))
@@ -26,15 +27,16 @@ bool EXPORT registerPlugin(string pluginName,
     {
         newPlugin->plugin->startupFun();
     }
-    for (int i = 0; i < RUN_LINE_NUM; i++)
+    for (int i = 2; i < RUN_LINE_NUM; i++)
     {
         if (runline[i])
         {
+            cout << "'" << i;
             newPlugin->next = &(*pluginList[i]);
             pluginList[i] = newPlugin;
         }
     }
-    if (runline[13])
+    if (runline[Fun])
     {
         funPluginNameList.push_back(pluginName);
     }
@@ -45,7 +47,7 @@ bool EXPORT delPlugin(string pluginName)
     if (!findPlugin(pluginName))
         return false;
     bool status = false;
-    for (int i = 0; i < RUN_LINE_NUM; i++)
+    for (int i = 2; i < RUN_LINE_NUM; i++)
     {
         pluginListStruct *last;
         for (pluginListStruct *it = pluginList[i]; it != nullptr && it->next != nullptr; last = &(*it), it = it->next)
@@ -87,7 +89,7 @@ bool EXPORT startPlugin(string pluginName)
 {
     if (!findPlugin(pluginName))
         return false;
-    for (int i = 0; i < RUN_LINE_NUM; i++)
+    for (int i = 2; i < RUN_LINE_NUM; i++)
     {
         for (pluginListStruct *it = pluginList[i]; it != nullptr; it = it->next)
         {
@@ -105,7 +107,7 @@ bool EXPORT stopPlugin(string pluginName)
 {
     if (!findPlugin(pluginName))
         return false;
-    for (int i = 0; i < RUN_LINE_NUM; i++)
+    for (int i = 2; i < RUN_LINE_NUM; i++)
     {
         for (pluginListStruct *it = pluginList[i]; it != nullptr; it = it->next)
         {
@@ -121,18 +123,34 @@ bool EXPORT stopPlugin(string pluginName)
 }
 bool EXPORT runPlugin(allInfoStruct &info, string runlineS)
 {
-    std::bitset<RUN_LINE_NUM> runline(runLineMap[runlineS]);
+    cout << runlineS << endl
+         << runLineMap[runlineS] << endl
+         << ":";
+    string pluginLine = runLineMap[runlineS];
+    reverse(pluginLine.begin(), pluginLine.end());
+    cout << pluginLine << endl;
+    std::bitset<RUN_LINE_NUM> runline(pluginLine);
     for (int i = 0; i < RUN_LINE_NUM; i++)
     {
+        cout << runline[i];
+    }
+    cout << endl;
+    for (int i = 1; i < RUN_LINE_NUM; i++)
+    {
         if (runline[i])
+        {
+            cout << runline[i] << i << '/';
             for (pluginListStruct *it = pluginList[i]; it != nullptr; it = it->next)
             {
+                cout << it->plugin->funName << endl;
                 if (it->plugin->isStart)
                 {
                     if (it->plugin->runFun(info))
                         return false;
                 }
             }
+        }
     }
+    cout << "l'\n";
     return true;
 }

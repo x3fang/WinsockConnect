@@ -36,23 +36,24 @@ map<string, string> runLineMap = {
     {"fun", "0000000000000010"},      // fun plugin
     {"log", "0000000000000001"}       // log plugin
 };
-enum RunLine
+
+enum RunLine // 对应的位数(runLineMap) 以便索引此功能在 pluginList 中的位置
 {
-    AcceptSocket = 0,
-    ServerRSStart = 1,
-    ServerOnline = 2,
-    ServerRecvData = 3,
-    ClientRSStart = 4,
-    ClientOnline = 5,
-    ClientExit = 6,
-    HealthyCheckSendData = 7,
-    HealthyCheckRecvData = 8,
-    HealthyCheckJudge = 9,
-    EveryFunctionStart = 10,
-    EveryFunctionEnd = 11,
-    CreateSEID = 12,
-    Fun = 13,
-    Log = 14
+    AcceptSocket = 1,
+    ServerRSStart = 2,
+    ServerOnline = 3,
+    ServerRecvData = 4,
+    ClientRSStart = 5,
+    ClientOnline = 6,
+    ClientExit = 7,
+    HealthyCheckSendData = 8,
+    HealthyCheckRecvData = 9,
+    HealthyCheckJudge = 10,
+    EveryFunctionStart = 11,
+    EveryFunctionEnd = 12,
+    CreateSEID = 13,
+    Fun = 14,
+    Log = 15
 
 };
 struct EXPORT pluginStruct

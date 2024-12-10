@@ -10,9 +10,10 @@
 #include <atomic>
 #include <WinSock2.h>
 #include <algorithm>
+#define ClientPluginClassNum 5
 #include "../log.h"
 #define EXPORT __declspec(dllexport)
-#define RUN_LINE_NUM 15
+#define RUN_LINE_NUM 17
 using std::atomic;
 using std::bitset;
 using std::map;
@@ -157,24 +158,55 @@ struct EXPORT allInfoStruct
 };
 typedef int (*start_ptr)(void);
 // isStart: 默认开启状态
-typedef bool (*RegisterPlugin_ptr)(string pluginName,
-                                   string runlineS,
-                                   void (*startupfunPtr)(),
-                                   void (*startfunPtr)(),
-                                   void (*stopfunPtr)(),
-                                   bool (*runfunPtr)(allInfoStruct &),
-                                   bool isStart);
-typedef bool (*DelPlugin_ptr)(string pluginName);
-typedef bool (*FindPlugin_ptr)(string pluginName);
-typedef bool (*RestPlugin_ptr)(string pluginName,
-                               string runlineS,
-                               void (*startupfunPtr)(),
-                               void (*startfunPtr)(),
-                               void (*stopfunPtr)(),
-                               bool (*runfunPtr)(allInfoStruct &),
-                               bool isStart);
-typedef bool (*StartPlugin_ptr)(string pluginName);
-typedef bool (*StopPlugin_ptr)(string pluginName);
-typedef void (*RunPlugin_ptr)(allInfoStruct &, string);
+typedef bool (*RegisterPluginFun_ptr)(string pluginName,
+                                      string runlineS,
+                                      void (*startupfunPtr)(),
+                                      void (*startfunPtr)(),
+                                      void (*stopfunPtr)(),
+                                      bool (*runfunPtr)(allInfoStruct &),
+                                      bool isStart);
+typedef bool (*DelPluginFun_ptr)(string pluginName);
+typedef bool (*FindPluginFun_ptr)(string pluginName);
+typedef bool (*RestPluginFun_ptr)(string pluginName,
+                                  string runlineS,
+                                  void (*startupfunPtr)(),
+                                  void (*startfunPtr)(),
+                                  void (*stopfunPtr)(),
+                                  bool (*runfunPtr)(allInfoStruct &),
+                                  bool isStart);
+typedef bool (*StartPluginFun_ptr)(string pluginName);
+typedef bool (*StopPluginFun_ptr)(string pluginName);
+typedef void (*RunPluginFun_ptr)(allInfoStruct &, string);
+
+typedef void (*startupFun_ptr)(void);
+typedef void (*startFun_ptr)(void);
+typedef void (*stopFun_ptr)(void);
 typedef bool (*runFun_ptr)(allInfoStruct &);
+
+void getFilesName(string path, vector<string> &files)
+{
+    // 文件句柄
+    intptr_t hFile = 0;
+    // 文件信息
+    struct _finddata_t fileinfo;
+    string p;
+    if ((hFile = _findfirst(p.assign(path).append("\\*").c_str(), &fileinfo)) != -1)
+    {
+        do
+        {
+            // 如果是目录,迭代之
+            // 如果不是,加入列表
+            if ((fileinfo.attrib & _A_SUBDIR))
+            {
+                if (strcmp(fileinfo.name, ".") != 0 && strcmp(fileinfo.name, "..") != 0)
+                    getFiles(p.assign(path).append("\\").append(fileinfo.name), files);
+            }
+            else
+            {
+                files.push_back(string(fileinfo.name).substr(0, string(fileinfo.name).find_last_of('.')));
+            }
+        } while (_findnext(hFile, &fileinfo) == 0);
+        _findclose(hFile);
+    }
+}
 #endif // _DEFINEHEAD_H_

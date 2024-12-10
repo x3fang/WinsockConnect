@@ -273,52 +273,48 @@ string createSEID(SOCKET sock, string something = NULL)
 //     HANDLE hCon = GetStdHandle(STD_OUTPUT_HANDLE);             // 获取缓冲区句柄
 //     SetConsoleTextAttribute(hCon, forecolor | backgroudcolor); // 设置文本及背景色
 // }
+void send_plugins_messages(RunLine pluginListIndex, SOCKET s)
+{
+    for (auto *it = pluginList[pluginListIndex]; it != nullptr; it = it->next)
+    {
+        send_message(s, it->plugin->funName);
+    }
+    send_message(s, "\r\nend\r\n");
+}
 void ServerRS(SOCKET s)
 {
     allInfoStruct info("", s, "ServerRS");
+    auto funlog = prlog.getFunLog("ServerRS");
+
     runPlugin(info, "eFstart");
     if (!runPlugin(info, "sRSstart"))
     {
-        auto funlog = prlog.getFunLog("ServerRS");
         *funlog << "runFun error for Server line:" << __LINE__ << lns::endl;
     }
-    // string lastloginYZM;
-    // string loginYZM;
-    // lastloginYZM.clear();
-    // bool loginTRUE = false;
-    // MD5 m;
-    // for (int i = 1; i <= 5 && !loginTRUE; i++)
-    // {
-    //     m.init();
-    //     string recvBuf;
-    //     if (!receive_message(s, recvBuf))
-    //     {
-    //         return;
-    //     }
-    //     loginYZM = m.encode(StringTime(time(NULL)) + lastloginYZM + password);
-    //     if (recvBuf == loginYZM)
-    //     {
-    //         loginTRUE = true;
-    //         if (!send_message(s, "true"))
-    //         {
-    //             return;
-    //         }
-    //         break;
-    //     }
-    //     if (!send_message(s, "error"))
-    //     {
-    //         return;
-    //     }
-    //     lastloginYZM = recvBuf;
-    // }
-    // if (!loginTRUE)
-    // {
-    //     auto funlog = prlog.getFunLog("ServerRS");
-    //     *funlog << "login error" << lns::endl;
-    //     return;
-    // }
+
+    // 通报插件
+    send_plugins_messages(Fun, s);
+    send_plugins_messages(ServerRecvData, s);
+    send_plugins_messages(ServerOnline, s);
+    send_plugins_messages(ServerRSStart, s);
+
+    string recvBuf;
+    bool state = receive_message(s, recvBuf);
+    if (!state)
+    {
+        *funlog << "recv From Server error "
+                << "error code:" << WSAGetLastError() << lns::endl;
+        runPlugin(info, "eFend");
+        return;
+    }
+    else if (recvBuf.find("\r\nClose\r\n") != string::npos)
+    {
+        *funlog << "Client plugin ERROR" << lns::endl;
+        runPlugin(info, "eFend");
+        return;
+    }
+
     string SEID = createSEID(s, StringTime(time(NULL)));
-    auto funlog = prlog.getFunLog("ServerRS");
     {
         std::lock_guard<std::mutex> lock(ServerSEIDMap[SEID].ServerSocketLock);
         if (!send_message(s, SEID.c_str()))
@@ -366,20 +362,13 @@ void ServerRS(SOCKET s)
                 break;
             }
         }
-        for (auto *it = pluginList[13];
-             it != nullptr && it->next != nullptr;
-             it = it->next)
-        {
-            send_message(s, it->plugin->funName);
-        }
-        send_message(s, "\r\nend\r\n");
+
         string recvBuf;
         bool state = false;
         {
             std::lock_guard<std::mutex> lock(ServerSEIDMap[SEID].ServerSocketLock);
             state = receive_message(s, recvBuf);
         }
-        *funlog << state << closeServer << recvBuf << lns::endl;
         if (closeServer)
             break;
         if (closeServer || !state || recvBuf.find("\r\nClose\r\n") != string::npos)
@@ -407,9 +396,9 @@ void ServerRS(SOCKET s)
                 *funlog << "runFun error for Server line:" << __LINE__ << lns::endl;
             }
             *funlog << "Recv:\n---------------------------------------------" << lns::endl
-                    << string(recvBuf).substr(0, (recvBuf.length() > 60 ? recvBuf.length() / 2 : recvBuf.length() - 1))
+                    << string(recvBuf).substr(0, (recvBuf.length() > 60 ? recvBuf.length() / 2 : recvBuf.length()))
                     << lns::endl
-                    << "....\n---------------------------------------------" << lns::endl;
+                    << "\n---------------------------------------------" << lns::endl;
             vector<string> cmods;
             string token;
             int tokenNum = 0;
@@ -421,12 +410,14 @@ void ServerRS(SOCKET s)
             }
             bool findFun = false;
             cout << "cmods:" << cmods[0] << endl;
-            for (auto *it = pluginList[13];
+            for (auto *it = pluginList[Fun];
                  it != nullptr && it->next != nullptr;
                  it = it->next)
             {
+                cout << it->plugin->funName << endl;
                 if (it->plugin->funName == cmods[0])
                 {
+                    *funlog << "find fun:" << it->plugin->funName << lns::endl;
                     findFun = true;
                     allInfoStruct info(SEID, s, cmods);
                     if (!it->plugin->runFun(info))
