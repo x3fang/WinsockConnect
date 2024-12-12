@@ -643,13 +643,6 @@ extern "C" int EXPORT start()
             }
             else if (strcmp(buf.c_str(), "Server") == 0)
             {
-                if (!send_message(aptSocket, "OK"))
-                {
-                    closesocket(aptSocket);
-                    prlog << "send to Server error "
-                          << "error code:" << WSAGetLastError() << lns::endl;
-                    continue;
-                }
                 prlog << "Server Connect" << lns::endl;
                 ServerSocketQueue.push(aptSocket);
                 Queuecv.notify_all();

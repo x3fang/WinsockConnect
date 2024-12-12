@@ -9,9 +9,14 @@
 #include <mutex>
 #include <atomic>
 #include <WinSock2.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <algorithm>
-#define ClientPluginClassNum 5
 #include "../log.h"
+
+#pragma comment(lib, "ws2_32.lib")
+
+#define ClientPluginClassNum 5
 #define EXPORT __declspec(dllexport)
 #define RUN_LINE_NUM 17
 using std::atomic;
@@ -199,11 +204,11 @@ void getFilesName(string path, vector<string> &files)
             if ((fileinfo.attrib & _A_SUBDIR))
             {
                 if (strcmp(fileinfo.name, ".") != 0 && strcmp(fileinfo.name, "..") != 0)
-                    getFiles(p.assign(path).append("\\").append(fileinfo.name), files);
+                    getFilesName(p.assign(path).append("\\").append(fileinfo.name), files);
             }
             else
             {
-                files.push_back(string(fileinfo.name).substr(0, string(fileinfo.name).find_last_of('.')));
+                files.push_back(path + "\\" + fileinfo.name);
             }
         } while (_findnext(hFile, &fileinfo) == 0);
         _findclose(hFile);
