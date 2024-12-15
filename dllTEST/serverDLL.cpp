@@ -34,103 +34,18 @@ using std::thread;
 using std::to_string;
 using std::vector;
 
+WSADATA g_wsaData;
 SOCKET g_sock = INVALID_SOCKET;
 sockaddr_in g_serverInfo = {0};
 vector<string> g_getFilesPathList, g_getFilesNameList;
 string g_SEID;
 string serverIP, serverPort;
 thread g_healthyThread;
+bool g_serverStopFlag = false;
 
-bool send_message(SOCKET &sock, const std::string &message)
+int initClientSocket(WSADATA &g_wsaData, SOCKET &sock, sockaddr_in &serverInfo, string serverIP, int serverPort)
 {
-    std::ostringstream oss;
-    oss << message.size() << "\r\n\r\n\r\n\r\n\r\n"
-        << message; // 构建消息，包含长度和实际数据
-    std::string formatted_message = oss.str();
-
-    int total_sent = 0;
-    int message_length = formatted_message.size();
-    const char *data = formatted_message.c_str();
-
-    while (total_sent < message_length)
-    {
-        int bytes_sent = send(sock, data + total_sent, message_length - total_sent, 0);
-        if (bytes_sent == SOCKET_ERROR)
-        {
-            return false; // 发送失败
-        }
-        total_sent += bytes_sent;
-    }
-    return true; // 发送成功
-}
-bool receive_message(SOCKET &sock, std::string &message)
-{
-    std::string length_str;
-    char buffer[16384] = {0};
-    int received;
-
-    // 首先读取长度部分，直到接收到 \r\n
-    while (true)
-    {
-        received = recv(sock, buffer, 1, 0); // 每次读取一个字节
-        if (received <= 0)
-        {
-            return false; // 连接断开或读取出错
-        }
-        if (buffer[0] == '\r')
-        {
-            // 继续读取\n
-            received = recv(sock, buffer, 1, 0);
-            if (received <= 0 || buffer[0] != '\n')
-            {
-                return false; // 格式错误
-            }
-
-            for (int i = 1; i <= 4; i++)
-            {
-                received = recv(sock, buffer, 1, 0);
-                if (received <= 0 || buffer[0] != '\r')
-                {
-                    return false; // 格式错误
-                }
-                received = recv(sock, buffer, 1, 0);
-                if (received <= 0 || buffer[0] != '\n')
-                {
-                    return false; // 格式错误
-                }
-            }
-            break; // 读取到 \r\n，退出循环
-        }
-        length_str += buffer[0];
-    }
-
-    int data_length = std::stoi(length_str); // 转换长度字符串为整数
-    message.resize(data_length);
-
-    int total_received = 0;
-    while (total_received < data_length)
-    {
-        received = recv(sock, &message[total_received], data_length - total_received, 0);
-        if (received <= 0)
-        {
-            return false; // 连接断开或读取出错
-        }
-        total_received += received;
-    }
-
-    return true; // 接收成功
-}
-int initClientSocket(SOCKET &sock, sockaddr_in &serverInfo, string serverIP, int serverPort)
-{
-    WSADATA wsaData;
     int iResult;
-    // Initialize Winsock
-    iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (iResult != 0)
-    {
-        printf("WSAStartup failed: %d\n", iResult);
-        return WSAGetLastError();
-    }
     // Create socket
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock == INVALID_SOCKET)
@@ -153,30 +68,44 @@ int connectServer(SOCKET &sock, sockaddr_in &serverInfo)
     iResult = connect(sock,
                       (struct sockaddr *)&serverInfo,
                       sizeof(serverInfo));
+    cout << iResult << endl
+         << SOCKET_ERROR << endl
+         << (iResult == SOCKET_ERROR) << endl;
     if (iResult == SOCKET_ERROR)
     {
-        printf("Error at connect(): %ld\n", WSAGetLastError());
-        closesocket(g_sock);
-        WSACleanup();
+        return WSAGetLastError();
     }
+    return 0;
 }
 int initPlugin()
 {
     getFilesName("plugins", g_getFilesNameList);
     if (g_getFilesNameList.empty())
-        return -1;
-    for (auto pluginName : g_getFilesNameList)
+        return 0;
+    string pluginName = g_getFilesNameList.front();
+    for (int i = 0;
+         i <= g_getFilesNameList.size();
+         i++, pluginName = g_getFilesNameList.front())
+
     {
+        if (pluginName.find(".dll") == string::npos)
+        {
+            g_getFilesNameList.erase(g_getFilesNameList.begin());
+            continue;
+        }
         string temp;
+        temp.clear();
         try
         {
-            temp = pluginName.substr(0, pluginName.find("."));
-            temp = temp.substr(temp.find("\\"));
+            string h = (pluginName).substr(0, (pluginName).find("."));
+            temp = (pluginName).substr(0, (pluginName).find("."));
+            temp = temp.substr(temp.find_last_of("\\") + 1);
         }
         catch (...)
         {
-            temp = pluginName;
+            temp = (pluginName);
         }
+        g_getFilesNameList.erase(g_getFilesNameList.begin());
         g_getFilesNameList.push_back(temp);
     }
 
@@ -193,20 +122,16 @@ int init(string serverIP, int serverPort)
         return iResult;
 
     // init socket
-    iResult = initClientSocket(g_sock, g_serverInfo, serverIP, serverPort);
-    if (iResult != 0)
-        return iResult;
-
-    // connect server
-    iResult = connectServer(g_sock, g_serverInfo);
+    iResult = initClientSocket(g_wsaData, g_sock, g_serverInfo, serverIP, serverPort);
     if (iResult != 0)
         return iResult;
 
     return 0;
 }
-int loadPlugin(vector<string> pluginList, string pluginType)
+pair<int, int> loadPlugin(vector<string> pluginList, string pluginType, vector<string> &loadPluginName)
 {
-    int iResult = 0;
+    int sucLoadNum = 0;
+    int failLoadNum = 0;
     for (auto pluginName : pluginList)
     {
         if (find(g_getFilesNameList.begin(),
@@ -216,7 +141,7 @@ int loadPlugin(vector<string> pluginList, string pluginType)
             auto loadLibrary = LoadLibrary(("plugins\\" + pluginName + ".dll").c_str());
             if (loadLibrary == NULL)
             {
-                iResult++;
+                failLoadNum++;
             }
             else
             {
@@ -224,18 +149,28 @@ int loadPlugin(vector<string> pluginList, string pluginType)
                 auto startFun = (startFun_ptr)GetProcAddress(loadLibrary, "Start");
                 auto stopFun = (stopFun_ptr)GetProcAddress(loadLibrary, "Stop");
                 auto runFun = (runFun_ptr)GetProcAddress(loadLibrary, "run");
-                registerPlugin(pluginName, pluginType, statusFun, startFun, stopFun, runFun);
+                if (registerPlugin(pluginName,
+                                   pluginType,
+                                   statusFun,
+                                   startFun,
+                                   stopFun,
+                                   runFun))
+                {
+                    loadPluginName.push_back(pluginName);
+                    sucLoadNum++;
+                }
             }
         }
         else
         {
-            iResult++;
+            failLoadNum++;
         }
     }
-    return iResult;
+    return std::make_pair(sucLoadNum, failLoadNum);
 }
 int pullOneClassPlugin(SOCKET &sock, vector<string> &pluginList)
 {
+    int iResult = 0;
     string message;
     do
     {
@@ -243,11 +178,14 @@ int pullOneClassPlugin(SOCKET &sock, vector<string> &pluginList)
         if (message.find("\r\nend\r\n") != string::npos)
             break;
         pluginList.push_back(message);
+        iResult++;
     } while (true);
-    return 0;
+    return iResult;
 }
 // necessity: every bit: 0:unnecessity 1:necessary
-int pullPlugin(SOCKET &sock, string necessity, vector<string> pluginType)
+int pullPlugin(SOCKET &sock, string necessity,
+               vector<string> pluginType,
+               vector<vector<string>> &loadPluginName)
 {
     int loadFailedNum = 0;
     int iResult = 0;
@@ -256,17 +194,23 @@ int pullPlugin(SOCKET &sock, string necessity, vector<string> pluginType)
     {
         vector<string> pluginListTemp;
         iResult = pullOneClassPlugin(sock, pluginListTemp);
-        if (iResult != 0)
+        cout << "pull plugin: " << i << endl;
+        for (auto i : pluginListTemp)
         {
-            return -iResult;
+            cout << i << endl;
+        }
+        if (iResult == 0)
+        {
+            continue;
         }
         if (necessity[i] == '0')
         {
-            loadFailedNum += loadPlugin(pluginListTemp, pluginType[i]);
+            auto temp = loadPlugin(pluginListTemp, pluginType[i], loadPluginName[i]);
+            loadFailedNum += temp.first;
         }
         else
         {
-            iResult = loadPlugin(pluginListTemp, pluginType[i]);
+            iResult = loadPlugin(pluginListTemp, pluginType[i], loadPluginName[i]).second;
             if (iResult != 0)
             {
                 return -iResult;
@@ -279,13 +223,32 @@ void healthyCheck(string SEID)
 {
     SOCKET sock;
     sockaddr_in serverInfo;
-    int iResult = initClientSocket(sock, serverInfo, serverIP, std::stoi(serverPort));
+    int iResult = initClientSocket(g_wsaData, sock, serverInfo, serverIP, std::stoi(serverPort));
     if (iResult != 0)
         return;
     iResult = connectServer(sock, serverInfo);
     if (iResult != 0)
         return;
     send_message(sock, SEID);
+    string msg;
+
+    int timeout = 3000;
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout, sizeof(timeout));
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+
+    while (true)
+    {
+        int state1 = receive_message(sock, msg);
+        int state2 = send_message(sock, msg);
+        if (g_serverStopFlag || !state1 || !state2)
+        {
+            g_serverStopFlag = true;
+            send_message(sock, "\r\nClose\r\n");
+            break;
+        }
+    }
+    closesocket(sock);
+    return;
 }
 int handshake(SOCKET &sock)
 {
@@ -293,12 +256,9 @@ int handshake(SOCKET &sock)
     send_message(sock, "Server");
 
     // load plugin
-    int iResultPlugin = pullPlugin(sock, "0111", {"fun", "srd", "sonline", "sRSstart"});
+    vector<vector<string>> temp;
+    int iResultPlugin = pullPlugin(sock, "1", {"sRSstart"}, temp);
     if (iResultPlugin < 0)
-    {
-        return iResultPlugin;
-    }
-    else
     {
         return iResultPlugin;
     }
@@ -306,10 +266,80 @@ int handshake(SOCKET &sock)
     // create healthy check thread
     receive_message(sock, g_SEID);
     g_healthyThread = thread(healthyCheck, g_SEID);
+    return 0;
+}
+int Mainloop()
+{
+    while (true)
+    {
+        vector<vector<string>> pluginList;
+        pullPlugin(g_sock, "0", {"fun"}, pluginList);
+        string pluginName;
+        while (!pluginList[0].empty())
+        {
+            cout << "input -1 to exit program" << endl;
+            int Tabflag = 1, index = 0;
+            for (auto plugin : pluginList[0])
+            {
+                cout << "plugin: " << plugin << " [" << index << "]";
+                if (Tabflag == 2)
+                    cout << endl;
+                else
+                    cout << "\t";
+                Tabflag = (Tabflag + 1) % 3;
+                index++;
+            }
+
+            cout << "Choose(0~" << index - 1 << "): ";
+            int choose;
+            cin >> choose;
+            if (choose == -1)
+            {
+                send_message(g_sock, "\r\nClose\r\n");
+                g_serverStopFlag = true;
+                g_healthyThread.join();
+                return 0;
+            }
+            else if (choose < 0 || choose >= index)
+            {
+                system("cls");
+                continue;
+            }
+            else
+            {
+                pluginName = pluginList[0][choose];
+                break;
+            }
+        }
+
+        send_message(g_sock, pluginName);
+
+        allInfoStruct info(g_SEID, g_sock, "", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+        runFun(info, pluginName);
+    }
 }
 int main()
 {
-    cin >> serverIP >> serverPort;
+    char path[MAX_PATH] = {0};
+    string temp, fileName;
+    GetModuleFileName(NULL, path, MAX_PATH);
+    temp = path;
+    temp = temp.substr(temp.find_last_of("\\") + 1);
+    temp = temp.substr(0, temp.find(".exe"));
+
+    fileName = temp;
+
+    prlog.setName(fileName);
+
+    int iResult_ = WSAStartup(MAKEWORD(2, 2), &g_wsaData);
+    if (iResult_ != 0)
+    {
+        printf("WSAStartup failed: %d\n", iResult_);
+        return WSAGetLastError();
+    }
+    // cin >> serverIP >> serverPort;
+    serverIP = "127.0.0.1";
+    serverPort = "6020";
     int iResult = init(serverIP, std::stoi(serverPort));
     if (iResult != 0)
     {
@@ -338,4 +368,6 @@ int main()
         system("pause");
         return iResult;
     }
+
+    return Mainloop();
 }

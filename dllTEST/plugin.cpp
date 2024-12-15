@@ -8,7 +8,9 @@ bool EXPORT registerPlugin(string pluginName,
                            bool (*runfunPtr)(allInfoStruct &info),
                            bool isStart)
 {
-    std::bitset<RUN_LINE_NUM> runline(runLineMap[runlineS], 0);
+    string runLineB = runLineMap[runlineS];
+    std::reverse(runLineB.begin(), runLineB.end());
+    std::bitset<RUN_LINE_NUM> runline(runLineB, 0);
     if (!findPlugin(pluginName))
         return false;
     while (pluginVectorLock.exchange(true, std::memory_order_acquire))
@@ -26,7 +28,7 @@ bool EXPORT registerPlugin(string pluginName,
     {
         newPlugin->plugin->startupFun();
     }
-    for (int i = 2; i < RUN_LINE_NUM; i++)
+    for (int i = 0; i < RUN_LINE_NUM; i++)
     {
         if (runline[i])
         {
@@ -126,15 +128,37 @@ bool EXPORT stopPlugin(string pluginName)
 bool EXPORT runPlugin(allInfoStruct &info, string runlineS)
 {
     string pluginLine = runLineMap[runlineS];
-    reverse(pluginLine.begin(), pluginLine.end());
-    std::bitset<RUN_LINE_NUM> runline(pluginLine);
-    for (int i = 1; i < RUN_LINE_NUM; i++)
+    std::reverse(pluginLine.begin(), pluginLine.end());
+    std::bitset<RUN_LINE_NUM> runline(pluginLine, 0);
+    for (int i = 0; i < RUN_LINE_NUM; i++)
     {
         if (runline[i])
         {
             for (pluginListStruct *it = pluginList[i]; it != nullptr; it = it->next)
             {
                 if (it->plugin->isStart)
+                {
+                    if (it->plugin->runFun != NULL &&
+                        it->plugin->runFun(info))
+                        return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+bool EXPORT runFun(allInfoStruct &info, string Name)
+{
+    string pluginLine = runLineMap["fun"];
+    reverse(pluginLine.begin(), pluginLine.end());
+    std::bitset<RUN_LINE_NUM> runline(pluginLine, 0);
+    for (int i = 0; i < RUN_LINE_NUM; i++)
+    {
+        if (runline[i])
+        {
+            for (pluginListStruct *it = pluginList[i]; it != nullptr; it = it->next)
+            {
+                if (it->plugin->isStart && it->plugin->funName == Name)
                 {
                     if (it->plugin->runFun != NULL &&
                         it->plugin->runFun(info))

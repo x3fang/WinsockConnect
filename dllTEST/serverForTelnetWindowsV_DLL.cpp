@@ -283,6 +283,11 @@ void send_plugins_messages(RunLine pluginListIndex, SOCKET s)
 }
 void ServerRS(SOCKET s)
 {
+    cout << "funPluginNameList:" << endl;
+    for (auto i : funPluginNameList)
+    {
+        cout << i << endl;
+    }
     allInfoStruct info("", s, "ServerRS");
     auto funlog = prlog.getFunLog("ServerRS");
 
@@ -293,26 +298,10 @@ void ServerRS(SOCKET s)
     }
 
     // 通报插件
-    send_plugins_messages(Fun, s);
-    send_plugins_messages(ServerRecvData, s);
-    send_plugins_messages(ServerOnline, s);
+
     send_plugins_messages(ServerRSStart, s);
 
     string recvBuf;
-    bool state = receive_message(s, recvBuf);
-    if (!state)
-    {
-        *funlog << "recv From Server error "
-                << "error code:" << WSAGetLastError() << lns::endl;
-        runPlugin(info, "eFend");
-        return;
-    }
-    else if (recvBuf.find("\r\nClose\r\n") != string::npos)
-    {
-        *funlog << "Client plugin ERROR" << lns::endl;
-        runPlugin(info, "eFend");
-        return;
-    }
 
     string SEID = createSEID(s, StringTime(time(NULL)));
     {
@@ -362,7 +351,7 @@ void ServerRS(SOCKET s)
                 break;
             }
         }
-
+        send_plugins_messages(Fun, s);
         string recvBuf;
         bool state = false;
         {
@@ -395,31 +384,20 @@ void ServerRS(SOCKET s)
             {
                 *funlog << "runFun error for Server line:" << __LINE__ << lns::endl;
             }
-            *funlog << "Recv:\n---------------------------------------------" << lns::endl
-                    << string(recvBuf).substr(0, (recvBuf.length() > 60 ? recvBuf.length() / 2 : recvBuf.length()))
-                    << lns::endl
-                    << "\n---------------------------------------------" << lns::endl;
-            vector<string> cmods;
-            string token;
-            int tokenNum = 0;
-            istringstream iss((string)recvBuf);
-            while (getline(iss, token, ' '))
-            {
-                tokenNum++;
-                cmods.push_back(token);
-            }
+            string funName = recvBuf;
             bool findFun = false;
-            cout << "cmods:" << cmods[0] << endl;
             for (auto *it = pluginList[Fun];
                  it != nullptr && it->next != nullptr;
                  it = it->next)
             {
                 cout << it->plugin->funName << endl;
-                if (it->plugin->funName == cmods[0])
+                if (it->plugin->funName == funName)
                 {
                     *funlog << "find fun:" << it->plugin->funName << lns::endl;
                     findFun = true;
-                    allInfoStruct info(SEID, s, cmods);
+
+                    allInfoStruct info(SEID, s, vector<string>{funName});
+
                     if (!it->plugin->runFun(info))
                     {
                         *funlog << "runFun error for Server line:" << __LINE__ << lns::endl;
@@ -602,6 +580,11 @@ extern "C" int EXPORT start()
     cout << "star Server" << endl;
     while (!closeServer)
     {
+        cout << "funPluginNameList:" << endl;
+        for (auto i : funPluginNameList)
+        {
+            cout << i << endl;
+        }
         string buf;
         SOCKET aptSocket;
         sockaddr_in aptsocketAddr = {0};
