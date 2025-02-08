@@ -16,13 +16,12 @@
 #include <fstream>
 #include <atomic>
 #include <sstream>
-#include "M:\\code\\bd\\WinSockBDF\\httplib.h"
-#include "M:\\code\\bd\\WinSockBDF\\json.hpp"
+#include "httplib.h"
+#include "json.hpp"
 
 #define STOPHEALTHCHECK 0
 
 using json = nlohmann::json;
-#include "..\\..\\..\\isdebug.h"
 #pragma comment(lib, "ws2_32")
 int localPort;
 using namespace std;

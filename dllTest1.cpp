@@ -12,8 +12,8 @@ runFun_ptr connectFun;
 int main()
 {
       // system("pause");
-      HINSTANCE dllHandle = LoadLibrary("..//A_dllB/serverForTelnetWindowsV_DLL.dll");
-      HINSTANCE dllHandle2 = LoadLibrary("..//A_dllB/simpleSMC.dll");
+      HINSTANCE dllHandle = LoadLibrary("serverForTelnetWindowsV_DLL.dll");
+      HINSTANCE dllHandle2 = LoadLibrary("simpleSMC.dll");
       if (dllHandle == NULL || dllHandle2 == NULL)
             return 1;
       start = (start_ptr)GetProcAddress(dllHandle, TEXT("start"));
