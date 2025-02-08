@@ -66,6 +66,7 @@ namespace logNameSpace
         Log(const std::string name, int logMaxSize = 1024 * 1024 * 128);
         ~Log();
         Log *operator=(Log &other);
+        Log *operator+(ENDL endl);
         Log &operator=(Log &&other) noexcept;
         void mustChangeFlie();
         void write(std::string msg);
@@ -324,7 +325,10 @@ namespace logNameSpace
         }
         return true;
     }
-
+    std::string operator+(std::string msg, ENDL p)
+    {
+        return msg + "\n";
+    }
 };
 
 #endif
