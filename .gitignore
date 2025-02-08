@@ -1,0 +1,75 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/settings.json
+.vscode/tasks.json
+A_exeB/password.data
+dllTEST/A_exeB/clientData.data
+dllTEST/A_exeB/password.data
+dllTEST/A_exeB/serverConfig.config
+dllTEST/fs/clientfs.cpp
+dllTEST/fs/serverfs.cpp
+dllTEST/log/dllTest1.log
+dllTEST/log/HealthyCheack.log
+dllTEST/log/initServer.log
+dllTEST/log/ServerRS.log
+dllTEST/log/StringTime.log
+dllTEST/.vscode/c_cpp_properties.json
+dllTEST/.vscode/launch.json
+dllTEST/.vscode/settings.json
+dllTEST/.vscode/tasks.json
+dllTEST/clientData.data
+dllTEST/dllfunRunotherDLLfun_2.cpp
+dllTEST/dllfunRunotherDLLfun_1.cpp
+dllTEST/dllTEST.cpp
+dllTEST/dllTEST.h
+dllTEST/dllTest1.cpp
+dllTEST/password.data
+dllTEST/getFileName.cpp
+dllTEST/simpleSMC.cpp
+dllTEST/tempToSaveCMS.cpp
+dllTEST/void Connect().cpp
+dllTEST/simpleSMC.cpp
+dllTEST/simpleSMC.cpp
+bd.txt
+clientData.data
+clientData.txt
+et --hard
+logtosftwDLL.cpp
+password.data
+serverConfig.config
+serverDLLmain.cpp
+112/client.cpp
+112/server.cpp
+dllTEST/getFileName.cpp
