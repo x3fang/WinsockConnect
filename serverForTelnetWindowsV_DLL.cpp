@@ -1,7 +1,6 @@
-#include "globaldll.h"
 #include "saveDatadll.h"
-#include "plugin.cpp"
-
+bool isServerHealthyCheckClose = false;
+bool isClientHealthyCheckClose = false;
 int initServer(SOCKET &, sockaddr_in &, int);
 string StringTime(time_t);
 // void Connect(string, vector<string>, int);
@@ -27,7 +26,7 @@ map<string, int> StringToInt =
 };
 int initServer(SOCKET &ListenSocket, sockaddr_in &sockAddr, int port)
 {
-      allInfoStruct info("", NULL, "initServer",
+      allInfoStruct info("", 0, "initServer",
                          runPluginValue);
       runPlugin(info, "eFstart");
 
@@ -63,13 +62,13 @@ int initServer(SOCKET &ListenSocket, sockaddr_in &sockAddr, int port)
       sockAddr.sin_port = htons(port);
       if (bind(ListenSocket, (SOCKADDR *)&sockAddr, sizeof(sockAddr)) == SOCKET_ERROR)
       {
+            int errorCode = WSAGetLastError();
+            *funlog << "bind() failed with error: " << errorCode << lns::endl;
+            *funlog << "initServer End" << lns::endl;
             closesocket(ListenSocket);
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
             WSACleanup();
 #endif
-            int errorCode = WSAGetLastError();
-            *funlog << "bind() failed with error: " << errorCode << lns::endl;
-            *funlog << "initServer End" << lns::endl;
             runPlugin(info, "eFend");
             return errorCode;
       }
@@ -92,7 +91,7 @@ int initServer(SOCKET &ListenSocket, sockaddr_in &sockAddr, int port)
 }
 string StringTime(time_t t1)
 {
-      allInfoStruct info("", NULL, "StringTime",
+      allInfoStruct info("", 0, "StringTime",
                          runPluginValue);
       runPlugin(info, "eFstart");
 
@@ -106,39 +105,10 @@ string StringTime(time_t t1)
       runPlugin(info, "eFend");
       return tmp;
 }
-void setServerOrClientExit(SEIDForSocketStruct &s)
-{
-      allInfoStruct info("", NULL, "setServerOrClientExit",
-                         runPluginValue);
-      runPlugin(info, "eFstart");
 
-      auto funlog = prlog.getFunLog("setServerOrClientExit");
-      // 设置退出标志
-      {
-            std::lock_guard<std::mutex> lock(s.OtherValueLock);
-            s.isBack = true;
-            s.isSocketExit = false;
-            *funlog << "set status isBack" << lns::endl;
-      }
-      // 关闭心跳套接字
-      {
-            std::lock_guard<std::mutex> lock(s.ServerHealthySocketLock);
-            closesocket(s.socketH);
-            *funlog << "close healthy cheacksocket" << lns::endl;
-      }
-      // 关闭连接套接字
-      {
-            std::lock_guard<std::mutex> lock(s.ServerSocketLock);
-            closesocket(s.ServerSocket);
-            *funlog << "close ServerSocket" << lns::endl;
-      }
-      *funlog << "setServerOrClientExit End" << lns::endl;
-      runPlugin(info, "eFend");
-      return;
-}
 void healthyLock()
 {
-      allInfoStruct info("", NULL, "healthyLock",
+      allInfoStruct info("", 0, "healthyLock",
                          runPluginValue);
       runPlugin(info, "eFstart");
 
@@ -149,7 +119,7 @@ void healthyLock()
 }
 void healthyUnlock()
 {
-      allInfoStruct info("", NULL, "healthyUnlock",
+      allInfoStruct info("", 0, "healthyUnlock",
                          runPluginValue);
       runPlugin(info, "eFstart");
 
@@ -159,7 +129,7 @@ void healthyUnlock()
 }
 void HealthyCheack()
 {
-      allInfoStruct info("", NULL, "HealthyCheack",
+      allInfoStruct info("", 0, "HealthyCheack",
                          runPluginValue);
       runPlugin(info, "eFstart");
 
@@ -178,18 +148,30 @@ void HealthyCheack()
 
                         if (HealthyQueue.front().isServer)
                         {
-                              *funlog << "start Server HealthyCheck,SEID:" << SEID << lns::endl;
+                              if (isServerHealthyCheckClose)
+                              {
+                                    HealthyQueue.push({HealthyQueue.front().SEID, HealthyQueue.front().isServer});
+                                    HealthyQueue.pop();
+                                    continue;
+                              }
+                              // *funlog << "start Server HealthyCheck,SEID:" << SEID << lns::endl;
                               temp = &ServerSEIDMap[SEID];
                         }
                         else
                         {
-                              *funlog << "start Client HealthyCheck,SEID:" << SEID << lns::endl;
+                              if (isClientHealthyCheckClose)
+                              {
+                                    HealthyQueue.push({HealthyQueue.front().SEID, HealthyQueue.front().isServer});
+                                    HealthyQueue.pop();
+                                    continue;
+                              }
+                              // *funlog << "start Client HealthyCheck,SEID:" << SEID << lns::endl;
                               temp = &ClientSEIDMap[SEID];
                         }
                         std::lock_guard<std::mutex> lock(temp->ServerHealthySocketLock);
 
                         srand(time(NULL) + rand());
-                        string sendMsg = to_string(rand() % 1000000000);
+                        int sendMsg = rand() % 10000000;
                         string buf;
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
                         int timeout = 3000;
@@ -205,41 +187,57 @@ void HealthyCheack()
 #endif
                         allInfoStruct info(temp->SEID, temp->socketH, "", runPluginValue);
                         info.msg = sendMsg;
-                        if (runPlugin(info, "hCsd"))
-                              sendMsg = info.msg;
-                        int state = send_message(temp->socketH, sendMsg);
+                        if (runPlugin(info, "hCsd") && !info.msg.empty())
+                              sendMsg = atoi(info.msg.c_str());
+                        int state = send_message(temp->socketH, to_string(sendMsg));
                         int state1 = receive_message(temp->socketH, buf);
                         info.msg = buf;
-                        if (runPlugin(info, "hCrd"))
+                        if (runPlugin(info, "hCrd") && !info.msg.empty())
                               buf = info.msg;
-                        if (!STOP_HEALTH_CHECK &&
-                            (runPlugin(info, "hCjudge") || buf != sendMsg || temp->isBack || !state || !state1))
-                        {
-                              *funlog << (HealthyQueue.front().isServer ? "Server" : "Client")
-                                      << " HealthyCheck Status:Error,error code:"
-                                      << WSAGetLastError()
-                                      << " SEID:" << SEID << lns::endl;
-                              HealthyQueue.pop();
-                              setServerOrClientExit(*temp);
-                              continue;
-                        }
-                        if (strcmp(buf.c_str(), "\r\nClose\r\n") == 0)
+                        if (buf == "\r\nClose\r\n")
                         {
                               *funlog << (HealthyQueue.front().isServer ? "Server" : "Client")
                                       << " HealthyCheck Status:Close SEID:" << SEID << lns::endl;
+                              if (!temp->isBack)
+                              {
+                                    if (HealthyQueue.front().isServer)
+                                          setServerExit(*temp);
+                                    else
+                                          setClientExit(*temp);
+                              }
                               HealthyQueue.pop();
-                              setServerOrClientExit(*temp);
+                              continue;
+                        }
+                        if (!STOP_HEALTH_CHECK &&
+                            (!runPlugin(info, "hCjudge") ||
+                             atoi(buf.c_str()) != sendMsg ||
+                             temp->isBack || !state || !state1))
+                        {
+                              *funlog << (HealthyQueue.front().isServer ? "Server" : "Client")
+                                      << " HealthyCheck Error,error code:"
+                                      << WSAGetLastError()
+                                      << " SEID:" << SEID
+                                      << " sendMsg:" << sendMsg
+                                      << " error line:" << __LINE__ << lns::endl;
+                              if (!temp->isBack)
+                              {
+                                    if (HealthyQueue.front().isServer)
+                                          setServerExit(*temp);
+                                    else
+                                          setClientExit(*temp);
+                              }
+                              HealthyQueue.pop();
                               continue;
                         }
 
-                        *funlog << (HealthyQueue.front().SEID) << lns::endl;
-                        HealthyQueue.push({temp->SEID, HealthyQueue.front().isServer});
-                        HealthyQueue.pop();
                         temp = nullptr;
-                        Sleep(300);
+                        // *funlog << (HealthyQueue.front().SEID) << lns::endl;
+                        HealthyQueue.push({HealthyQueue.front().SEID, HealthyQueue.front().isServer});
+                        HealthyQueue.pop();
                   }
                   healthyUnlock();
             }
+            Sleep(500);
       }
       if (!HealthyQueue.empty())
       {
@@ -264,7 +262,7 @@ void HealthyCheack()
 }
 string createSEID(SOCKET sock, string something = NULL)
 {
-      allInfoStruct info("", NULL, "createSEID", runPluginValue);
+      allInfoStruct info("", 0, "createSEID", runPluginValue);
       runPlugin(info, "eFstart");
 
       MD5 m;
@@ -283,7 +281,7 @@ string createSEID(SOCKET sock, string something = NULL)
 // }
 void send_plugins_messages(RunLine pluginListIndex, SOCKET s)
 {
-      for (auto *it = pluginList[pluginListIndex]; it != nullptr; it = it->next)
+      for (std::shared_ptr<pluginListStruct> it = pluginList[pluginListIndex]; it != nullptr; it = it->next)
       {
             send_message(s, it->plugin->funName);
       }
@@ -313,6 +311,7 @@ void ServerRS(SOCKET s)
             ServerSEIDMap[SEID].isSEIDExit = true;
             ServerSEIDMap[SEID].SEID = SEID;
             ServerSEIDMap[SEID].ServerSocket = s;
+            ServerSEIDMap[SEID].isBack = false;
       }
       {
             std::lock_guard<std::mutex> lock(ServerSEIDMap[SEID].ServerSocketLock);
@@ -371,7 +370,6 @@ void ServerRS(SOCKET s)
                           << "error code:" << WSAGetLastError() << lns::endl;
                   std::lock_guard<std::mutex> lock(ServerSEIDMap[SEID].ServerSocketLock);
                   std::lock_guard<std::mutex> lockO(ServerSEIDMap[SEID].OtherValueLock);
-                  ServerSEIDMap[(string)SEID].isBack = true;
                   closesocket(s);
                   *funlog << "Server exit" << lns::endl;
                   *funlog << "ServerRS End" << lns::endl;
@@ -390,7 +388,7 @@ void ServerRS(SOCKET s)
                         *funlog << "runFun error for Server line:" << __LINE__ << lns::endl;
                   }
                   string funName = recvBuf;
-                  if (findPlugin(recvBuf))
+                  if (!findPlugin(recvBuf))
                   {
                         if (!send_message(s, "\r\nnFind\r\n"))
                         {
@@ -454,6 +452,7 @@ void ClientRS(SOCKET s)
             std::lock_guard<std::mutex> lock(ClientSEIDMap[SEID].OtherValueLock);
             ClientSEIDMap[SEID].ServerSocket = s;
             ClientSEIDMap[SEID].isSEIDExit = true;
+            ClientSEIDMap[SEID].isBack = false;
       }
 
       if (!send_message(s, SEID))
@@ -473,7 +472,7 @@ void ClientRS(SOCKET s)
             *funlog << "runFun error for Server line:" << __LINE__ << lns::endl;
       }
       healthyLock();
-      HealthyQueue.push({SEID, true});
+      HealthyQueue.push({SEID, false});
       healthyUnlock();
       while (!closeServer)
       {
@@ -491,7 +490,7 @@ void ClientRS(SOCKET s)
 }
 void ServerConnect()
 {
-      allInfoStruct info("", NULL, "ServerConnect", runPluginValue);
+      allInfoStruct info("", 0, "ServerConnect", runPluginValue);
       runPlugin(info, "eFstart");
 
       while (!closeServer)
@@ -511,7 +510,7 @@ void ServerConnect()
 }
 void ClientConnect()
 {
-      allInfoStruct info("", NULL, "ClientConnect", runPluginValue);
+      allInfoStruct info("", 0, "ClientConnect", runPluginValue);
       runPlugin(info, "eFstart");
 
       while (!closeServer)
@@ -531,7 +530,7 @@ void ClientConnect()
 extern "C" int EXPORT start()
 {
 
-      allInfoStruct info("", NULL, "start", runPluginValue);
+      allInfoStruct info("", 0, "start", runPluginValue);
       runPlugin(info, "eFstart");
 
       char path[MAX_PATH] = {0};
@@ -563,6 +562,7 @@ extern "C" int EXPORT start()
       {
             prlog << "ERROR:initServer failed" << lns::endl;
             prlog << "Error code:" << ir << lns::endl;
+            system("pause");
             return ir;
       }
       thread HealthyCheackThread = thread(HealthyCheack);
@@ -673,10 +673,18 @@ extern "C" int EXPORT start()
       runPlugin(info, "eFend");
       return 0;
 }
-void stop()
+extern "C" void EXPORT stop()
 {
       closeServer = true;
       closesocket(ListenSocket);
       prlog << "program stop" << lns::endl;
       return;
+}
+extern "C" void EXPORT set_isServerHealthyCheckClose(bool SHCF = true)
+{
+      isServerHealthyCheckClose = SHCF;
+}
+extern "C" void EXPORT set_isClientHealthyCheckClose(bool CHCF = true)
+{
+      isClientHealthyCheckClose = CHCF;
 }

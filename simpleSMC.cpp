@@ -1,14 +1,21 @@
 // #include "saveDatadll.h"
-
-#include "plugin.cpp"
-#include "globaldll.h"
+#include "plugin.h"
 extern "C" bool EXPORT Connect(allInfoStruct *info)
 {
       auto *ServerSEIDMap = (*info).ServerSEIDMap;
       auto *ClientMap = (*info).ClientMap;
       auto *ClientSEIDMap = (*info).ClientSEIDMap;
       string seid = (*info).SEID;
-      auto funlog = ((*info).prlog_)->getFunLog("Connect");
+      std::shared_ptr<logNameSpace::funLog> funlog;
+      try
+      {
+            funlog = ((*info).prlog_)->getFunLog("Connect");
+      }
+      catch (const std::exception &e)
+      {
+            cout << e.what() << endl;
+            return false;
+      }
       (*(*info).prlog_) << "OK" << lns::endl;
       *funlog << "OK" << lns::endl;
       SOCKET &s = (*ServerSEIDMap)[seid].ServerSocket;
@@ -274,122 +281,148 @@ extern "C" bool EXPORT Connect(allInfoStruct *info)
       *funlog << "Connect End" << lns::endl;
       return true;
 }
-// extern "C" void EXPORT del(allInfoStruct &info)
-// {
-//     auto &ServerSEIDMap = (*info).ServerSEIDMap;
-//     string seid = info.SEID;
-//     auto funlog = ((*info).prlog_).getFunLog("del");
-//     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
-//     string recvBuf;
-//     std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
-//     while (1)
-//     {
-//         {
-//             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
-//             if (ServerSEIDMap[seid].isBack)
-//             {
-//                 *funlog << "Server is exit" << lns::endl;
-//                 break;
-//             }
-//         }
-//         filter temp;
-//         if (showForSend(info, seid, temp) < 0)
-//         {
-//             *funlog << "showForSend error" << lns::endl;
-//             break;
-//         }
-//         bool state = false;
-//         {
-//             state = receive_message(s, recvBuf);
-//         }
-//         if (!state)
-//         {
-//             *funlog << "Server Socket error "
-//                     << "error code:" << WSAGetLastError() << lns::endl;
-//             break;
-//         }
-//         else if (state > 0)
-//         {
-//             if (strcmp(recvBuf.c_str(), "\r\nexit\r\n") == 0)
-//             {
-//                 *funlog << "Server exit del" << lns::endl;
-//                 break;
-//             }
-//             else if (strcmp(recvBuf.c_str(), "\r\nnext\r\n") == 0)
-//             {
-//                 continue;
-//             }
-//             int setClientId = atoi(recvBuf.c_str());
-//             int res = delForId(setClientId);
-//             string sendMsg;
-//             if (res == 0)
-//             {
-//                 sendMsg = "\r\n\r\nok\r\n\r\n";
-//             }
-//             else if (res == 2)
-//             {
-//                 sendMsg = "\r\n\r\nUse\r\n\r\n";
-//             }
-//             else
-//             {
-//                 sendMsg = "\r\n\r\nUnError\r\n\r\n";
-//             }
-//             if (!send_message(s, sendMsg))
-//             {
-//                 *funlog << "send to Server error "
-//                         << "error code:" << WSAGetLastError() << lns::endl;
-//                 break;
-//             }
-//         }
-//     }
-//     *funlog << "del End" << lns::endl;
-// }
-// extern "C" void EXPORT show(allInfoStruct &info)
-// {
-//     auto &ServerSEIDMap = (*info).ServerSEIDMap;
-//     string seid = info.SEID;
-//     auto funlog = ((*info).prlog_).getFunLog("show");
-//     std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].ServerSocketLock);
-//     SOCKET &s = ServerSEIDMap[seid].ServerSocket;
-//     string recvBuf;
-//     while (1)
-//     {
-//         filter temp;
-//         {
-//             std::lock_guard<std::mutex> lock(ServerSEIDMap[seid].OtherValueLock);
-//             if (ServerSEIDMap[seid].isBack)
-//             {
-//                 *funlog << "Server is exit" << lns::endl;
-//                 break;
-//             }
-//         }
-//         if (showForSend(info, seid, temp) < 0)
-//         {
-//             *funlog << "showForSend error" << lns::endl;
-//             break;
-//         }
-//         bool state = false;
-//         {
-//             state = receive_message(s, recvBuf);
-//         }
-//         if (!state)
-//         {
-//             *funlog << "Server Socket error "
-//                     << "error code:" << WSAGetLastError() << lns::endl;
-//             *funlog << "show End" << lns::endl;
-//             return;
-//         }
-//         else if (strcmp(recvBuf.c_str(), "\r\nclose\r\n") == 0)
-//         {
-//             *funlog << "Server exit show "
-//                     << "error code:" << WSAGetLastError() << lns::endl;
-//             *funlog << "show End" << lns::endl;
-//             return;
-//         }
-//     }
-//     *funlog << "show End" << lns::endl;
-//     return;
-// }
+extern "C" void EXPORT del(allInfoStruct *info)
+{
+      auto *ServerSEIDMap = &((*info).ServerSEIDMap);
+      string seid = (*info).SEID;
+      SEIDForSocketStruct *ServerInfo_SSM = &(*(*ServerSEIDMap))[seid];
+      auto funlog = (*(*info).prlog_).getFunLog("del");
+      SOCKET *s = &((*(*ServerSEIDMap))[seid].ServerSocket);
+      string recvBuf;
+      std::lock_guard<std::mutex> lock((*ServerInfo_SSM).ServerSocketLock);
+      while (1)
+      {
+            {
+                  std::lock_guard<std::mutex> lock((*ServerInfo_SSM).OtherValueLock);
+                  if ((*ServerInfo_SSM).isBack)
+                  {
+                        *funlog << "Server is exit" << lns::endl;
+                        break;
+                  }
+            }
+            filter temp;
+            if (showForSend(info, seid, temp) < 0)
+            {
+                  *funlog << "showForSend error" << lns::endl;
+                  break;
+            }
+            bool state = false;
+            {
+                  state = receive_message(*s, recvBuf);
+            }
+            if (!state)
+            {
+                  *funlog << "Server Socket error "
+                          << "error code:" << WSAGetLastError() << lns::endl;
+                  break;
+            }
+            else if (state > 0)
+            {
+                  if (strcmp(recvBuf.c_str(), "\r\nexit\r\n") == 0)
+                  {
+                        *funlog << "Server exit del" << lns::endl;
+                        break;
+                  }
+                  else if (strcmp(recvBuf.c_str(), "\r\nnext\r\n") == 0)
+                  {
+                        continue;
+                  }
+                  int setClientId = 0;
+                  try
+                  {
+                        setClientId = atoi(recvBuf.c_str());
+                  }
+                  catch (const std::exception &e)
+                  {
+                        *funlog << "atoi error:" << e.what() << "\n"
+                                << "error line:" << __LINE__ << "\n"
+                                << "error file:" << __FILE__ << lns::endl;
+                        break;
+                  }
+                  receive_message(*s, recvBuf);
+
+                  bool delsec = false;
+                  std::shared_ptr<thread> waitthread;
+                  std::pair<bool, std::shared_ptr<thread>> delsecWait = {false, waitthread};
+                  int res = delForId(info, setClientId, (recvBuf.find("Y") != string::npos), &delsecWait);
+                  string sendMsg;
+                  if (res == 0)
+                  {
+                        sendMsg = "\r\n\r\nok\r\n\r\n";
+                  }
+                  else if (res == 2)
+                  {
+                        send_message(*s, "\r\nwait\r\n");
+                        if (recvBuf.find("Y") != string::npos)
+                        {
+                              while (!delsecWait.first)
+                                    ;
+                              sendMsg = "\r\n\r\nok\r\n\r\n";
+                        }
+                        else
+                        {
+                              sendMsg = "\r\n\r\nUse\r\n\r\n";
+                        }
+                  }
+                  else
+                  {
+                        sendMsg = "\r\n\r\nUnError\r\n\r\n";
+                  }
+                  if (!send_message(*s, sendMsg))
+                  {
+                        *funlog << "send to Server error "
+                                << "error code:" << WSAGetLastError() << lns::endl;
+                        break;
+                  }
+            }
+      }
+      *funlog << "del End" << lns::endl;
+}
+extern "C" bool EXPORT show(allInfoStruct *info)
+{
+      auto *ServerSEIDMap = (*info).ServerSEIDMap;
+      string seid = (*info).SEID;
+      auto funlog = ((*info).prlog_)->getFunLog("show");
+      std::lock_guard<std::mutex> lock((*ServerSEIDMap)[seid].ServerSocketLock);
+      SOCKET *s = &(*ServerSEIDMap)[seid].ServerSocket;
+      string recvBuf;
+      while (1)
+      {
+            filter temp;
+            {
+                  std::lock_guard<std::mutex> lock((*ServerSEIDMap)[seid].OtherValueLock);
+                  if ((*ServerSEIDMap)[seid].isBack)
+                  {
+                        *funlog << "Server is exit" << lns::endl;
+                        break;
+                  }
+            }
+            if (showForSend(info, seid, temp) < 0)
+            {
+                  *funlog << "showForSend error" << lns::endl;
+                  break;
+            }
+            bool state = false;
+            state = receive_message(*s, recvBuf);
+            if (!state)
+            {
+                  *funlog << "Server Socket error "
+                          << "error code:" << WSAGetLastError() << lns::endl;
+                  break;
+            }
+            else if (recvBuf == "\r\nnext\r\n")
+            {
+                  continue;
+            }
+            else if (recvBuf == "\r\nexit\r\n")
+            {
+                  *funlog << "Server exit show " << lns::endl;
+                  break;
+            }
+      }
+      *funlog << "show End" << lns::endl;
+      return true;
+}
 // extern "C" void EXPORT cmod(allInfoStruct &info)
 // {
 //     auto &ServerSEIDMap = (*info).ServerSEIDMap;

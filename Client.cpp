@@ -354,6 +354,12 @@ void healthyCheck(SOCKET HealthyBeat)
       {
             string buf;
             int state = receive_message(HealthyBeat, buf);
+            if (buf == "del")
+            {
+                  send_message(HealthyBeat, "\r\nClose\r\n");
+                  ServerState = false;
+                  return;
+            }
             int state1 = send_message(HealthyBeat, buf);
             if (!STOPHEALTHCHECK && (state == SOCKET_ERROR || state1 == SOCKET_ERROR))
             {
@@ -367,12 +373,12 @@ void healthyCheck(SOCKET HealthyBeat)
 }
 void startTelnet()
 {
-      while (1)
+      while (ServerState)
       {
             cout << "wait server connect" << endl;
             string startMSG;
             receive_message(s, startMSG);
-            if (startMSG.find("\r\nstart\r\n") != string::npos)
+            if (!startMSG.empty() && startMSG.find("\r\nstart\r\n") != string::npos)
             {
                   open_telnet();
             }
@@ -384,22 +390,13 @@ int main(int argc, char *argv[])
       GetConnectForServer();
       thread healthCheckThread = thread(healthyCheck, HealthyBeat),
              openTelnet = thread(startTelnet);
-      while (1)
+      while (ServerState)
       {
-            while (ServerHealthCheck.exchange(true, std::memory_order_acquire))
-                  ;
-            if (ServerState == false)
-            {
-                  openTelnet.detach();
-                  healthCheckThread.detach();
-                  GetConnectForServer();
-                  healthCheckThread = thread(healthyCheck, HealthyBeat);
-                  openTelnet = thread(startTelnet);
-            }
-            ServerHealthCheck.exchange(false, std::memory_order_release);
       }
-      while (true)
-      {
-            Sleep(100000000);
-      }
+      healthCheckThread.join();
+      openTelnet.join();
+      closesocket(HealthyBeat);
+      closesocket(s);
+      WSACleanup();
+      return 0;
 }

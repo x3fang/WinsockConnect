@@ -73,3 +73,14 @@ serverDLLmain.cpp
 112/client.cpp
 112/server.cpp
 dllTEST/getFileName.cpp
+log/ClientRS.log
+log/Connect.log
+log/del.log
+log/dllTest1.log
+log/HealthyCheack.log
+log/initServer.log
+log/ServerRS.log
+log/show.log
+log/StringTime.log
+.gitignore
+log.txt

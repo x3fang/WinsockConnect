@@ -15,25 +15,65 @@
 #include <utility>
 #include <sstream>
 #include <regex>
+#include <functional>
 #include "log.h"
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include <windows.h>
+#pragma comment(lib, "ws2_32.lib")
+#endif
+#include <stdio.h>
+#include <iostream>
+#include <random>
+#include <fstream>
+#include <thread>
+#include <time.h>
+#include <condition_variable>
+#include "MD5.h"
+#include "fliterDLL.h"
+#if __linux__
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <cstring>
+#define SOCKET int
+#define INVALID_SOCKET -1
+#define BOOL bool
+#define Sleep sleep
+#define SOCKET_ERROR -1
+#define closesocket close
+#define WSAGetLastError() errno
+#define SOCKADDR sockaddr
+#endif
 
 #define STOP_HEALTH_CHECK 0
-
 #pragma comment(lib, "ws2_32.lib")
-
 #define ClientPluginClassNum 5
 #define EXPORT __declspec(dllexport)
-#define RUN_LINE_NUM 17
 using std::atomic;
 using std::bitset;
+using std::cerr;
+using std::cin;
+using std::condition_variable;
+using std::cout;
+using std::endl;
+using std::fstream;
+using std::ifstream;
+using std::ios;
+using std::istringstream;
 using std::map;
 using std::mutex;
+using std::ofstream;
 using std::pair;
 using std::queue;
 using std::string;
+using std::thread;
+using std::to_string;
 using std::vector;
 logNameSpace::Log prlog("");
 std::regex only_number("\\d+");
+#define lns logNameSpace
+#define runPluginValue &ClientSocketQueue, &ServerSocketQueue, &ServerSEIDMap, &ClientSEIDMap, &ClientMap, &ServerQueueLock, &ClientQueueLock, &ClientMapLock
 typedef struct ClientSocketFlagStruct
 {
       string SEID;
@@ -49,11 +89,9 @@ typedef struct ClientSocketFlagStruct
             Use = 3
       };
       states state;
-      bool operator==(const ClientSocketFlagStruct &e)
-      {
-            return (this->ClientLanIp == e.ClientLanIp &&
-                    this->ClientWanIp == e.ClientWanIp);
-      }
+      bool operator==(const ClientSocketFlagStruct &e);
+      bool operator==(const string &e);
+      bool operator()(const ClientSocketFlagStruct &e, const string &e2) const;
 };
 typedef struct SEIDForSocketStruct
 {
@@ -73,46 +111,14 @@ typedef struct SEIDForSocketStruct
       atomic<bool> serverHealthySocketLock;
       atomic<bool> otherValueLock;
 
-      SEIDForSocketStruct()
-      {
-            SEID.clear();
-            ServerSocket = INVALID_SOCKET;
-            socketH = INVALID_SOCKET;
-            isSEIDExit = false;
-            isSocketExit = false;
-            isBack = false;
-            isUse = false;
-            serverSocketLock.exchange(false, std::memory_order_relaxed);
-            serverHealthySocketLock.exchange(false, std::memory_order_relaxed);
-            otherValueLock.exchange(false, std::memory_order_relaxed);
-      }
-      void getServerSocketLock()
-      {
-            while (serverSocketLock.exchange(true, std::memory_order_acquire))
-                  ;
-      }
-      void releaseServerSocketLock()
-      {
-            serverSocketLock.exchange(false, std::memory_order_release);
-      }
-      void getServerHealthySocketLock()
-      {
-            while (serverHealthySocketLock.exchange(true, std::memory_order_acquire))
-                  ;
-      }
-      void releaseServerHealthySocketLock()
-      {
-            serverHealthySocketLock.exchange(false, std::memory_order_release);
-      }
-      void getOtherValueLock()
-      {
-            while (otherValueLock.exchange(true, std::memory_order_acquire))
-                  ;
-      }
-      void releaseOtherValueLock()
-      {
-            otherValueLock.exchange(false, std::memory_order_release);
-      }
+      SEIDForSocketStruct();
+      void getServerSocketLock();
+      void releaseServerSocketLock();
+      void getServerHealthySocketLock();
+      void releaseServerHealthySocketLock();
+      void getOtherValueLock();
+      void releaseOtherValueLock();
+      bool operator==(const string &e);
 };
 
 struct HealthyDataStruct
@@ -125,11 +131,13 @@ struct EXPORT allInfoStruct
       logNameSpace::Log *prlog_;
       string SEID;
       string msg;
-      vector<string> msgVector;
+      vector<string> *msgVector;
+      vector<void *> *pluginList;
       queue<SOCKET> *ClientSocketQueue, *ServerSocketQueue;
       map<string, SEIDForSocketStruct> *ServerSEIDMap, *ClientSEIDMap;
       vector<ClientSocketFlagStruct> *ClientMap;
       mutex *ServerQueueLock, *ClientQueueLock;
+      atomic<bool> *ClientMapLock;
       SOCKET NowSocket;
       allInfoStruct(string seid,
                     SOCKET Nsocket,
@@ -140,55 +148,29 @@ struct EXPORT allInfoStruct
                     map<string, SEIDForSocketStruct> *ClientSEIDMap,
                     vector<ClientSocketFlagStruct> *ClientMap,
                     mutex *ServerQueueLock,
-                    mutex *ClientQueueLock)
-      {
-            SEID = seid;
-            this->ClientSocketQueue = ClientSocketQueue;
-            this->ServerSocketQueue = ServerSocketQueue;
-            this->ServerSEIDMap = ServerSEIDMap;
-            this->ClientSEIDMap = ClientSEIDMap;
-            this->ClientMap = ClientMap;
-            this->ServerQueueLock = ServerQueueLock;
-            this->ClientQueueLock = ClientQueueLock;
-            this->NowSocket = Nsocket;
-            this->msg = msg;
-            this->prlog_ = &prlog;
-      }
+                    mutex *ClientQueueLock,
+                    atomic<bool> *ClientMapLock,
+                    vector<void *> *pluginList = nullptr);
 
       allInfoStruct(string seid,
                     SOCKET Nsocket,
-                    vector<string> msgVector,
+                    vector<string> *msgVector,
                     queue<SOCKET> *ClientSocketQueue,
                     queue<SOCKET> *ServerSocketQueue,
                     map<string, SEIDForSocketStruct> *ServerSEIDMap,
                     map<string, SEIDForSocketStruct> *ClientSEIDMap,
                     vector<ClientSocketFlagStruct> *ClientMap,
                     mutex *ServerQueueLock,
-                    mutex *ClientQueueLock)
-      {
-            SEID = seid;
-            this->ClientSocketQueue = ClientSocketQueue;
-            this->ServerSocketQueue = ServerSocketQueue;
-            this->ServerSEIDMap = ServerSEIDMap;
-            this->ClientSEIDMap = ClientSEIDMap;
-            this->ClientMap = ClientMap;
-            this->ServerQueueLock = ServerQueueLock;
-            this->ClientQueueLock = ClientQueueLock;
-            this->NowSocket = Nsocket;
-            this->msgVector = msgVector;
-      }
-      ~allInfoStruct()
-      {
-            this->ServerQueueLock = nullptr;
-            this->ClientQueueLock = nullptr;
-            this->ClientSocketQueue = nullptr;
-            this->ServerSocketQueue = nullptr;
-            this->ServerSEIDMap = nullptr;
-            this->ClientSEIDMap = nullptr;
-            this->ClientMap = nullptr;
-      }
+                    mutex *ClientQueueLock,
+                    atomic<bool> *ClientMapLock,
+                    vector<void *> *pluginList = nullptr);
+      ~allInfoStruct();
 };
 typedef int (*start_ptr)(void);
+typedef int (*stop_ptr)(void);
+typedef void (*set_isServerHealthyCheckClose_ptr)(bool);
+typedef void (*set_isClientHealthyCheckClose_ptr)(bool);
+
 // isStart: 默认开启状态
 typedef bool (*RegisterPluginFun_ptr)(string pluginName,
                                       string runlineS,
@@ -210,120 +192,17 @@ typedef bool (*StartPluginFun_ptr)(string pluginName);
 typedef bool (*StopPluginFun_ptr)(string pluginName);
 typedef void (*RunPluginFun_ptr)(allInfoStruct &, string);
 typedef void (*RunFun_ptr)(allInfoStruct &, string);
-
 typedef void (*startupFun_ptr)(void);
 typedef void (*startFun_ptr)(void);
 typedef void (*stopFun_ptr)(void);
 typedef bool (*runFun_ptr)(allInfoStruct *);
 
-void setClientState(ClientSocketFlagStruct *ClientSocketFlagStruct, ClientSocketFlagStruct::states state)
-{
-      ClientSocketFlagStruct->state = state;
-      return;
-}
-void getFilesName(string path, vector<string> &files)
-{
-      // 文件句柄
-      intptr_t hFile = 0;
-      // 文件信息
-      struct _finddata_t fileinfo;
-      string p;
-      if ((hFile = _findfirst(p.assign(path).append("\\*").c_str(), &fileinfo)) != -1)
-      {
-            do
-            {
-                  // 如果是目录,迭代之
-                  // 如果不是,加入列表
-                  if ((fileinfo.attrib & _A_SUBDIR))
-                  {
-                        if (strcmp(fileinfo.name, ".") != 0 && strcmp(fileinfo.name, "..") != 0)
-                              getFilesName(p.assign(path).append("\\").append(fileinfo.name), files);
-                  }
-                  else
-                  {
-                        files.push_back(path + "\\" + fileinfo.name);
-                  }
-            } while (_findnext(hFile, &fileinfo) == 0);
-            _findclose(hFile);
-      }
-}
-bool send_message(SOCKET &sock, const std::string &message)
-{
-      std::ostringstream oss;
-      oss << message.size() << "\r\n\r\n\r\n\r\n\r\n"
-          << message; // 构建消息，包含长度和实际数据
-      std::string formatted_message = oss.str();
-
-      int total_sent = 0;
-      int message_length = formatted_message.size();
-      const char *data = formatted_message.c_str();
-
-      while (total_sent < message_length)
-      {
-            int bytes_sent = send(sock, data + total_sent, message_length - total_sent, 0);
-            if (bytes_sent == SOCKET_ERROR)
-            {
-                  return false; // 发送失败
-            }
-            total_sent += bytes_sent;
-      }
-      return true; // 发送成功
-}
-bool receive_message(SOCKET &sock, std::string &message)
-{
-      std::string length_str;
-      char buffer[16384] = {0};
-      int received;
-
-      // 首先读取长度部分，直到接收到 \r\n
-      while (true)
-      {
-            received = recv(sock, buffer, 1, 0); // 每次读取一个字节
-            if (received <= 0)
-            {
-                  return false; // 连接断开或读取出错
-            }
-            if (buffer[0] == '\r')
-            {
-                  // 继续读取\n
-                  received = recv(sock, buffer, 1, 0);
-                  if (received <= 0 || buffer[0] != '\n')
-                  {
-                        return false; // 格式错误
-                  }
-
-                  for (int i = 1; i <= 4; i++)
-                  {
-                        received = recv(sock, buffer, 1, 0);
-                        if (received <= 0 || buffer[0] != '\r')
-                        {
-                              return false; // 格式错误
-                        }
-                        received = recv(sock, buffer, 1, 0);
-                        if (received <= 0 || buffer[0] != '\n')
-                        {
-                              return false; // 格式错误
-                        }
-                  }
-                  break; // 读取到 \r\n，退出循环
-            }
-            length_str += buffer[0];
-      }
-
-      int data_length = std::stoi(length_str); // 转换长度字符串为整数
-      message.resize(data_length);
-
-      int total_received = 0;
-      while (total_received < data_length)
-      {
-            received = recv(sock, &message[total_received], data_length - total_received, 0);
-            if (received <= 0)
-            {
-                  return false; // 连接断开或读取出错
-            }
-            total_received += received;
-      }
-
-      return true; // 接收成功
-}
+#include "definehead.cpp"
+#include "include/server.h"
+#include "include/client.h"
+#include "plugin.h"
+bool send_message(SOCKET &sock, const std::string &message);
+bool receive_message(SOCKET &sock, std::string &message);
+extern "C" void EXPORT sendError(logNameSpace::funLog &funlog, string seid, string nextDo);
+extern "C" void EXPORT recvError(logNameSpace::funLog &funlog, string seid, string nextDo);
 #endif // _DEFINEHEAD_H_

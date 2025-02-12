@@ -1,6 +1,6 @@
 #ifndef SAVEDATA_H_
 #define SAVEDATA_H_
-#include "globaldll.h"
+#include "definehead.h"
 
 bool ischange = false;
 int PassDataInit = 0;
@@ -34,7 +34,7 @@ void dataSave()
 }
 void passData()
 {
-
+      allInfoStruct info("", 0, "ClientConnect", runPluginValue);
       while (!closeServer)
       {
             if (!PassDataInit)
@@ -43,7 +43,11 @@ void passData()
                   {
                         if (ClientMap[i - 1].state != ClientSocketFlagStruct::states::Use && ClientMap[i - 1].Offline != 0 && (ClientMap[i - 1].Offline - ClientMap[i - 1].Online) >= 3600)
                         {
-                              delForId(i);
+                              std::shared_ptr<thread> waitthread;
+                              std::pair<bool, std::shared_ptr<thread>> delsecWait = {false, waitthread};
+                              int res = delForId(&info, i, true, &delsecWait);
+                              while (!delsecWait.first)
+                                    ;
                         }
                         else
                               DataSaveArry.push_back(ClientMap[i - 1]);
@@ -56,7 +60,11 @@ void passData()
             {
                   if (ClientMap[i - 1].state != ClientSocketFlagStruct::states::Use && ClientMap[i - 1].Offline != 0 && (ClientMap[i - 1].Offline - ClientMap[i - 1].Online) >= 3600)
                   {
-                        delForId(i);
+                        std::shared_ptr<thread> waitthread;
+                        std::pair<bool, std::shared_ptr<thread>> delsecWait = {false, waitthread};
+                        int res = delForId(&info, i, true, &delsecWait);
+                        while (!delsecWait.first)
+                              ;
                   }
                   else
                   {
