@@ -119,21 +119,16 @@ void setServerExit(SEIDForSocketStruct &s)
 {
       s.isBack = true;
       s.isSocketExit = true;
-      ClientSEIDMap.erase(s.SEID);
-      // 设置退出标志
-      {
-            std::lock_guard<std::mutex> lock(s.OtherValueLock);
-      }
+      ServerSEIDMap.erase(s.SEID);
       // 关闭心跳套接字
       {
-            std::lock_guard<std::mutex> lock(s.ServerHealthySocketLock);
             closesocket(s.socketH);
       }
       // 关闭连接套接字
       {
-            std::lock_guard<std::mutex> lock(s.ServerSocketLock);
             closesocket(s.ServerSocket);
       }
+
       return;
 }
 void setClientExit(SEIDForSocketStruct &s)

@@ -1,6 +1,6 @@
 #ifndef SERVER_H
 #define SERVER_H
-#include "../definehead.h"
+#include "definehead.h"
 atomic<bool> HealthyLock(false);
 queue<HealthyDataStruct> HealthyQueue;
 int ServerPort;

@@ -1,6 +1,6 @@
 #ifndef client_h
 #define client_h
-#include "../definehead.h"
+#include "definehead.h"
 mutex ClientQueueLock;
 atomic<bool> ClientMapLock(false);
 vector<thread> ClientRSThreadArry;

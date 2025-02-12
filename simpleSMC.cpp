@@ -1,5 +1,13 @@
 // #include "saveDatadll.h"
-#include "plugin.h"
+#include "include/plugin.h"
+map<string, int> StringToInt =
+    {
+        {"connect", 1},
+        {"del", 2},
+        {"show", 3},
+        {"cmd", 4}
+
+};
 extern "C" bool EXPORT Connect(allInfoStruct *info)
 {
       auto *ServerSEIDMap = (*info).ServerSEIDMap;

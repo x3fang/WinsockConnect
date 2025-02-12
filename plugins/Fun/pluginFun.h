@@ -1,6 +1,8 @@
 #ifndef PLUGINFUN_H
 #define PLUGINFUN_H
-#include "..\\..\\definehead.h"
+#define UNLOAD_PLUGIN
+#define UNLOADSC_HEAD
+#include "../../include/definehead.h"
 #include <iostream>
 #include <conio.h>
 using std::cerr;

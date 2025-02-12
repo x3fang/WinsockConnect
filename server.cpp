@@ -15,9 +15,9 @@
 #include <map>
 #include <queue>
 #include <string>
-#include "plugin.h"
-#include "MD5.h"
-#include "hookClose.h"
+#define UNLOADSC_HEAD
+#include "include/definehead.h"
+#include "include/MD5.h"
 using std::atomic;
 using std::cin;
 using std::cout;

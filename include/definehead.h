@@ -166,6 +166,8 @@ struct EXPORT allInfoStruct
                     vector<void *> *pluginList = nullptr);
       ~allInfoStruct();
 };
+
+#ifndef UNLOAD_PLUGIN
 typedef int (*start_ptr)(void);
 typedef int (*stop_ptr)(void);
 typedef void (*set_isServerHealthyCheckClose_ptr)(bool);
@@ -196,11 +198,19 @@ typedef void (*startupFun_ptr)(void);
 typedef void (*startFun_ptr)(void);
 typedef void (*stopFun_ptr)(void);
 typedef bool (*runFun_ptr)(allInfoStruct *);
+#endif
 
 #include "definehead.cpp"
-#include "include/server.h"
-#include "include/client.h"
+
+#ifndef UNLOADSC_HEAD
+#include "server.h"
+#include "client.h"
+#endif
+
+#ifndef UNLOAD_PLUGIN
 #include "plugin.h"
+#endif
+
 bool send_message(SOCKET &sock, const std::string &message);
 bool receive_message(SOCKET &sock, std::string &message);
 extern "C" void EXPORT sendError(logNameSpace::funLog &funlog, string seid, string nextDo);

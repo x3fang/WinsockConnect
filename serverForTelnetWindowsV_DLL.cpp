@@ -1,4 +1,4 @@
-#include "saveDatadll.h"
+#include "include/saveDatadll.h"
 bool isServerHealthyCheckClose = false;
 bool isClientHealthyCheckClose = false;
 int initServer(SOCKET &, sockaddr_in &, int);
@@ -16,14 +16,7 @@ void saveData();
 void dataSave();
 void passData();
 void loadData();
-map<string, int> StringToInt =
-    {
-        {"connect", 1},
-        {"del", 2},
-        {"show", 3},
-        {"cmd", 4}
 
-};
 int initServer(SOCKET &ListenSocket, sockaddr_in &sockAddr, int port)
 {
       allInfoStruct info("", 0, "initServer",
@@ -568,8 +561,7 @@ extern "C" int EXPORT start()
       thread HealthyCheackThread = thread(HealthyCheack);
       thread ClientConnectThread = thread(ClientConnect);
       thread ServerConnectThread = thread(ServerConnect);
-      thread dataSaveThread = thread(dataSave);
-      thread PassDataThread = thread(passData);
+      thread SaveDataThread = thread(saveData);
       prlog << "server init ok" << lns::endl;
       prlog << ("port:" + to_string(ServerPort)) + lns::endl;
       prlog << "Listen!" << lns::endl;
@@ -663,12 +655,11 @@ extern "C" int EXPORT start()
       HealthyCheackThread.join();
       ClientConnectThread.join();
       ServerConnectThread.join();
-      dataSaveThread.join();
+      SaveDataThread.join();
       for (auto it = ClientRSThreadArry.begin(); it != ClientRSThreadArry.end(); it++)
             (*it).join();
       for (auto it = ServerRSThreadArry.begin(); it != ServerRSThreadArry.end(); it++)
             (*it).join();
-      PassDataThread.join();
       prlog << "program end" << lns::endl;
       runPlugin(info, "eFend");
       return 0;

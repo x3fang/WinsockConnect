@@ -16,8 +16,8 @@
 #include <fstream>
 #include <atomic>
 #include <sstream>
-#include "httplib.h"
-#include "json.hpp"
+#include "include/httplib.h"
+#include "include/json.hpp"
 
 #define STOPHEALTHCHECK 0
 

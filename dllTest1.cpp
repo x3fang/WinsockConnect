@@ -4,7 +4,8 @@
 #include <vector>
 #include <thread>
 #include <bitset>
-#include "definehead.h"
+#define UNLOADSC_HEAD
+#include "include/definehead.h"
 using namespace std;
 start_ptr start;
 RegisterPluginFun_ptr regPlugin;
