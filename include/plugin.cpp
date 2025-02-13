@@ -8,15 +8,14 @@ extern "C" bool EXPORT registerPlugin(string pluginName,
                                       void (*startfunPtr)(),
                                       void (*stopfunPtr)(),
                                       bool (*runfunPtr)(allInfoStruct *info),
-                                      bool isStart)
+                                      bool isStart,
+                                      map<string, string> (*cmdInfoGet)())
 {
       string runLineB = runLineMap[runlineS];
       std::reverse(runLineB.begin(), runLineB.end());
       std::bitset<RUN_LINE_NUM> runline(runLineB, 0);
       if (findPlugin(pluginName))
             return false;
-      while (pluginVectorLock.exchange(true, std::memory_order_acquire))
-            ;
       std::shared_ptr<pluginListStruct> newPlugin = std::make_shared<pluginListStruct>();
       newPlugin->next = nullptr;
       newPlugin->plugin = std::make_shared<pluginStruct>(pluginName,
@@ -24,12 +23,14 @@ extern "C" bool EXPORT registerPlugin(string pluginName,
                                                          startfunPtr,
                                                          stopfunPtr,
                                                          runfunPtr,
-                                                         isStart);
+                                                         isStart,
+                                                         cmdInfoGet);
       pluginNameList.push_back(pluginName);
       if (newPlugin->plugin->startupFun != nullptr)
       {
             newPlugin->plugin->startupFun();
       }
+      int index = 0;
       for (int i = 0; i < RUN_LINE_NUM; i++)
       {
             if (runline[i])
@@ -37,13 +38,17 @@ extern "C" bool EXPORT registerPlugin(string pluginName,
                   if (pluginList[i] != nullptr)
                         newPlugin->next = pluginList[i];
                   pluginList[i] = newPlugin;
+                  index = i;
             }
       }
       if (runline[Fun])
       {
             funPluginNameList.push_back(pluginName);
       }
-      pluginVectorLock.exchange(false, std::memory_order_release);
+      else if (runline[FunTerminal])
+      {
+            funPluginComdVerNameList.push_back({pluginName, pluginList[index]});
+      }
       return true;
 }
 extern "C" bool EXPORT delPlugin(string pluginName)
@@ -83,9 +88,23 @@ extern "C" bool EXPORT delPlugin(string pluginName)
                   }
             }
       }
-      if (find(funPluginNameList.begin(), funPluginNameList.end(), pluginName) != funPluginNameList.end())
+      if (find(funPluginNameList.begin(),
+               funPluginNameList.end(),
+               pluginName) != funPluginNameList.end())
       {
-            funPluginNameList.erase(find(funPluginNameList.begin(), funPluginNameList.end(), pluginName));
+            funPluginNameList.erase(
+                find(funPluginNameList.begin(),
+                     funPluginNameList.end(),
+                     pluginName));
+      }
+      if (find(funPluginComdVerNameList.begin(),
+               funPluginComdVerNameList.end(),
+               pluginName) != funPluginComdVerNameList.end())
+      {
+            funPluginComdVerNameList.erase(
+                find(funPluginComdVerNameList.begin(),
+                     funPluginComdVerNameList.end(),
+                     pluginName));
       }
       pluginNameList.erase(find(pluginNameList.begin(), pluginNameList.end(), pluginName));
       return status;
@@ -100,12 +119,20 @@ extern "C" bool EXPORT rsetPlugin(string pluginName,
                                   void (*startfunPtr)(),
                                   void (*stopfunPtr)(),
                                   bool (*runfunPtr)(allInfoStruct *info),
-                                  bool isStart)
+                                  bool isStart,
+                                  map<string, string> (*cmdInfoGet)())
 {
       if (!findPlugin(pluginName))
             return false;
       if (delPlugin(pluginName))
-            return registerPlugin(pluginName, runlineS, startupfunPtr, startfunPtr, stopfunPtr, runfunPtr, isStart);
+            return registerPlugin(pluginName,
+                                  runlineS,
+                                  startupfunPtr,
+                                  startfunPtr,
+                                  stopfunPtr,
+                                  runfunPtr,
+                                  isStart,
+                                  cmdInfoGet);
       return false;
 }
 extern "C" bool EXPORT startPlugin(string pluginName)
@@ -176,6 +203,7 @@ extern "C" bool EXPORT runFun(allInfoStruct *info, string Name)
       {
             for (std::shared_ptr<pluginListStruct> it = pluginList[RunLine::Fun]; it != nullptr; it = it->next)
             {
+
                   if (it->plugin->isStart &&
                       it->plugin->funName == Name &&
                       it->plugin->runFun != NULL)

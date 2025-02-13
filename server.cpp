@@ -372,7 +372,7 @@ void funplugin()
                   int choose = 0;
                   cin.clear();
                   cin.sync();
-                  scanf("%d", &choose);
+                  cin >> choose;
                   if (choose == -1)
                   {
                         return;
@@ -394,7 +394,7 @@ void funplugin()
             receive_message(g_sock, Sres);
             if (Sres == "\r\nsec\r\n")
             {
-                  allInfoStruct info(g_SEID, g_sock, "", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+                  allInfoStruct info(g_SEID, g_sock, "", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
                   if (!runFun(&info, pluginName))
                   {
                         if (!info.msg.empty())
@@ -502,7 +502,8 @@ int main()
                          string("B-loop"),
                          nullptr, nullptr, nullptr,
                          nullptr, nullptr, nullptr,
-                         nullptr, nullptr,
+                         nullptr, nullptr, nullptr,
+                         nullptr, nullptr, nullptr,
                          &tempV);
       runPlugin(info, "local");
       return Mainloop();

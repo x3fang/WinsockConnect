@@ -31,17 +31,17 @@ int main()
             return 2;
       try
       {
-            // setServerHealthyCheck(true);
+            setServerHealthyCheck(true);
             try
             {
-                  cout << regPlugin("connect", "fun", NULL, NULL, NULL, connectFun, true);
+                  cout << regPlugin("connect", "fun", NULL, NULL, NULL, connectFun, true, nullptr);
             }
             catch (std::exception &e)
             {
                   cout << e.what();
             }
-            cout << regPlugin("del", "fun", NULL, NULL, NULL, delFun, true);
-            cout << regPlugin("show", "fun", NULL, NULL, NULL, showFun, true);
+            cout << regPlugin("del", "fun", NULL, NULL, NULL, delFun, true, nullptr);
+            cout << regPlugin("show", "fun", NULL, NULL, NULL, showFun, true, nullptr);
             // cout << delPluginFun("show");
             thread t = thread(start);
             t.join();

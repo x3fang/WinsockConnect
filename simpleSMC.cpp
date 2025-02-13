@@ -431,6 +431,14 @@ extern "C" bool EXPORT show(allInfoStruct *info)
       *funlog << "show End" << lns::endl;
       return true;
 }
+extern "C" bool EXPORT cmd(allInfoStruct *info)
+{
+      auto *ServerSEIDMap = (*info).ServerSEIDMap;
+      string seid = (*info).SEID;
+      auto funlog = ((*info).prlog_)->getFunLog("cmd");
+      SOCKET *s = &(*ServerSEIDMap)[seid].ServerSocket;
+      map<string, vector<string>> cmdOpt;
+}
 // extern "C" void EXPORT cmod(allInfoStruct &info)
 // {
 //     auto &ServerSEIDMap = (*info).ServerSEIDMap;

@@ -20,11 +20,10 @@ extern "C" int EXPORT sendClientList(SOCKET &s)
       {
             string recvBuf;
             receive_message(s, recvBuf);
-            if (strcmp(string(recvBuf).c_str(), "\r\n\r\nend\r\n\r\n") == 0)
+            if (recvBuf == "\r\n\r\nend\r\n\r\n")
             {
                   break;
             }
-
             clientNum++;
             string srecv = recvBuf;
             istringstream iss(srecv);

@@ -11,6 +11,10 @@ allInfoStruct::~allInfoStruct()
       this->ClientMap = nullptr;
       this->ClientMapLock = nullptr;
       this->pluginList = nullptr;
+      this->pluginNameList = nullptr;
+      this->funPluginNameList = nullptr;
+      this->funPluginComdVerNameList = nullptr;
+      this->VpluginFunList = nullptr;
 }
 allInfoStruct::allInfoStruct(string seid,
                              SOCKET Nsocket,
@@ -23,7 +27,11 @@ allInfoStruct::allInfoStruct(string seid,
                              mutex *ServerQueueLock,
                              mutex *ClientQueueLock,
                              atomic<bool> *ClientMapLock,
-                             vector<void *> *pluginList)
+                             vector<std::shared_ptr<pluginListStruct>> *pluginList,
+                             vector<string> *pluginNameList,
+                             vector<string> *funPluginNameList,
+                             vector<funPluginComdVerNameStruct> *funPluginComdVerNameList,
+                             vector<void *> *VpluginFunList)
 {
       SEID = seid;
       this->ClientSocketQueue = ClientSocketQueue;
@@ -38,6 +46,10 @@ allInfoStruct::allInfoStruct(string seid,
       this->prlog_ = &prlog;
       this->ClientMapLock = ClientMapLock;
       this->pluginList = pluginList;
+      this->pluginNameList = pluginNameList;
+      this->funPluginNameList = funPluginNameList;
+      this->funPluginComdVerNameList = funPluginComdVerNameList;
+      this->VpluginFunList = VpluginFunList;
 }
 allInfoStruct::allInfoStruct(string seid,
                              SOCKET Nsocket,
@@ -50,7 +62,11 @@ allInfoStruct::allInfoStruct(string seid,
                              mutex *ServerQueueLock,
                              mutex *ClientQueueLock,
                              atomic<bool> *ClientMapLock,
-                             vector<void *> *pluginList)
+                             vector<std::shared_ptr<pluginListStruct>> *pluginList,
+                             vector<string> *pluginNameList,
+                             vector<string> *funPluginNameList,
+                             vector<funPluginComdVerNameStruct> *funPluginComdVerNameList,
+                             vector<void *> *VpluginFunList)
 {
       SEID = seid;
       this->ClientSocketQueue = ClientSocketQueue;
@@ -65,6 +81,10 @@ allInfoStruct::allInfoStruct(string seid,
       this->prlog_ = &prlog;
       this->ClientMapLock = ClientMapLock;
       this->pluginList = pluginList;
+      this->pluginNameList = pluginNameList;
+      this->funPluginNameList = funPluginNameList;
+      this->funPluginComdVerNameList = funPluginComdVerNameList;
+      this->VpluginFunList = VpluginFunList;
 }
 
 SEIDForSocketStruct::SEIDForSocketStruct()

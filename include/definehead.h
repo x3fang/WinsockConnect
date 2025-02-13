@@ -73,7 +73,7 @@ using std::vector;
 logNameSpace::Log prlog("");
 std::regex only_number("\\d+");
 #define lns logNameSpace
-#define runPluginValue &ClientSocketQueue, &ServerSocketQueue, &ServerSEIDMap, &ClientSEIDMap, &ClientMap, &ServerQueueLock, &ClientQueueLock, &ClientMapLock
+#define runPluginValue &ClientSocketQueue, &ServerSocketQueue, &ServerSEIDMap, &ClientSEIDMap, &ClientMap, &ServerQueueLock, &ClientQueueLock, &ClientMapLock, &pluginList, &pluginNameList, &funPluginNameList, &funPluginComdVerNameList
 typedef struct ClientSocketFlagStruct
 {
       string SEID;
@@ -126,19 +126,29 @@ struct HealthyDataStruct
       string SEID;
       bool isServer;
 };
+struct EXPORT pluginStruct;
+struct EXPORT pluginListStruct;
+struct funPluginComdVerNameStruct;
 struct EXPORT allInfoStruct
 {
       logNameSpace::Log *prlog_;
       string SEID;
       string msg;
       vector<string> *msgVector;
-      vector<void *> *pluginList;
       queue<SOCKET> *ClientSocketQueue, *ServerSocketQueue;
       map<string, SEIDForSocketStruct> *ServerSEIDMap, *ClientSEIDMap;
       vector<ClientSocketFlagStruct> *ClientMap;
+
+      vector<std::shared_ptr<pluginListStruct>> *pluginList;
+      vector<string> *pluginNameList;
+      vector<string> *funPluginNameList;
+      vector<funPluginComdVerNameStruct> *funPluginComdVerNameList;
+
       mutex *ServerQueueLock, *ClientQueueLock;
       atomic<bool> *ClientMapLock;
       SOCKET NowSocket;
+
+      vector<void *> *VpluginFunList;
       allInfoStruct(string seid,
                     SOCKET Nsocket,
                     string msg,
@@ -150,7 +160,11 @@ struct EXPORT allInfoStruct
                     mutex *ServerQueueLock,
                     mutex *ClientQueueLock,
                     atomic<bool> *ClientMapLock,
-                    vector<void *> *pluginList = nullptr);
+                    vector<std::shared_ptr<pluginListStruct>> *pluginList,
+                    vector<string> *pluginNameList,
+                    vector<string> *funPluginNameList,
+                    vector<funPluginComdVerNameStruct> *funPluginComdVerNameList,
+                    vector<void *> *VpluginFunList = nullptr);
 
       allInfoStruct(string seid,
                     SOCKET Nsocket,
@@ -163,7 +177,11 @@ struct EXPORT allInfoStruct
                     mutex *ServerQueueLock,
                     mutex *ClientQueueLock,
                     atomic<bool> *ClientMapLock,
-                    vector<void *> *pluginList = nullptr);
+                    vector<std::shared_ptr<pluginListStruct>> *pluginList,
+                    vector<string> *pluginNameList,
+                    vector<string> *funPluginNameList,
+                    vector<funPluginComdVerNameStruct> *funPluginComdVerNameList,
+                    vector<void *> *VpluginFunList = nullptr);
       ~allInfoStruct();
 };
 
@@ -180,7 +198,8 @@ typedef bool (*RegisterPluginFun_ptr)(string pluginName,
                                       void (*startfunPtr)(),
                                       void (*stopfunPtr)(),
                                       bool (*runfunPtr)(allInfoStruct *),
-                                      bool isStart);
+                                      bool isStart,
+                                      map<string, string> (*cmdInfoGet)());
 typedef bool (*DelPluginFun_ptr)(string pluginName);
 typedef bool (*FindPluginFun_ptr)(string pluginName);
 typedef bool (*RestPluginFun_ptr)(string pluginName,
@@ -189,7 +208,8 @@ typedef bool (*RestPluginFun_ptr)(string pluginName,
                                   void (*startfunPtr)(),
                                   void (*stopfunPtr)(),
                                   bool (*runfunPtr)(allInfoStruct *),
-                                  bool isStart);
+                                  bool isStart,
+                                  map<string, string> (*cmdInfoGet)());
 typedef bool (*StartPluginFun_ptr)(string pluginName);
 typedef bool (*StopPluginFun_ptr)(string pluginName);
 typedef void (*RunPluginFun_ptr)(allInfoStruct &, string);
